@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Eco-MaaS: Aeolus Command Center</title>
+    <!-- 引入科技感字型 -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&family=Rajdhani:wght@400;600&display=swap" rel="stylesheet">
+    
+    <link rel="stylesheet" href="/static/style.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+</head>
+<body>
+    <!-- 背景裝飾網格 -->
+    <div class="bg-grid"></div>
+    <div class="scan-line"></div>
+
+    <div class="app-container">
+        <!-- 左側：地圖監控 -->
+        <div class="main-view">
+            <!-- 頂部狀態列 -->
+            <div class="header-bar hud-panel">
+                <div class="header-left">
+                    <div class="logo">
+                        <i class="fa-solid fa-wind fa-beat-fade"></i> 
+                        <span>ECO-MAAS</span> 
+                        <small>KINMEN CPS CORE v2.0</small>
+                    </div>
+                </div>
+                <div class="header-right">
+                    <div class="metric-group">
+                        <span class="label">WIND VELOCITY</span>
+                        <span class="value" id="windSpeed">-- <small>m/s</small></span>
+                    </div>
+                    <div class="metric-group">
+                        <span class="label">SYSTEM STATUS</span>
+                        <span class="value status-ok">ONLINE</span>
+                    </div>
+                    <div class="metric-group">
+                        <span class="label">SERVER TIME</span>
+                        <span class="value" id="sysTime">--:--:--</span>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- 中央畫布 -->
+            <div class="canvas-wrapper hud-border">
+                <canvas id="mapCanvas"></canvas>
+                
+                <!-- 懸浮 UI 元素 -->
+                <div class="overlay-ui top-left">
+                    <div class="hud-text">SECTOR: KINMEN-ISLAND</div>
+                    <div class="hud-text">MODE: AUTONOMOUS</div>
+                </div>
+                <div class="overlay-ui bottom-right">
+                    <div class="hud-hint"><i class="fa-solid fa-computer-mouse"></i> INTERACTIVE MAP ENABLED</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 右側：資訊面板 -->
+        <div class="sidebar hud-panel">
+            <div class="sidebar-header">
+                <h2><i class="fa-solid fa-satellite-dish"></i> FLEET MONITOR</h2>
+                <div class="decor-line"></div>
+            </div>
+            
+            <!-- 車輛列表 -->
+            <div class="panel-section">
+                <div class="section-title">ACTIVE UNITS</div>
+                <div id="vehicleList" class="vehicle-list custom-scroll">
+                    <!-- JS 動態生成 -->
+                </div>
+            </div>
+
+            <!-- 詳情卡片 (HUD Style) -->
+            <div id="infoCard" class="info-card hidden">
+                <div class="card-header">
+                    <h3 id="cardTitle">TARGET ID</h3>
+                    <span class="card-tag" id="cardStat1">TYPE</span>
+                </div>
+                <div class="card-body">
+                    <div class="img-frame">
+                        <img id="cardImg" src="" alt="Target Visual">
+                        <div class="scan-overlay"></div>
+                    </div>
+                    <p id="cardDesc">Analyzing target data...</p>
+                    <div class="card-footer">
+                        <div class="data-point">
+                            <span class="lbl">QUEUE/LOAD</span>
+                            <span class="val" id="cardStat2">--</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- 底部裝飾 -->
+            <div class="sidebar-footer">
+                <div class="loading-bar">
+                    <div class="bar-fill"></div>
+                </div>
+                <span class="terminal-text">> SYSTEM OPTIMAL</span>
+            </div>
+        </div>
+    </div>
+
+    <script src="/static/app.js"></script>
+</body>
+</html>

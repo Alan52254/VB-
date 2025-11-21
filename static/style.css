@@ -1,0 +1,178 @@
+:root {
+    --bg-core: #050a10;
+    --bg-panel: rgba(12, 20, 35, 0.85);
+    --neon-cyan: #00f3ff;
+    --neon-green: #00ff9d;
+    --neon-red: #ff0055;
+    --neon-amber: #ffb300;
+    --text-main: #e0e7ff;
+    --text-dim: #607d8b;
+    --border-color: rgba(0, 243, 255, 0.3);
+}
+
+body { 
+    margin: 0; 
+    background-color: var(--bg-core);
+    background-image: 
+        radial-gradient(circle at 50% 50%, #0f172a 0%, #000 100%);
+    color: var(--text-main); 
+    font-family: 'Rajdhani', sans-serif; 
+    overflow: hidden; 
+    height: 100vh;
+}
+
+/* 背景裝飾 */
+.bg-grid {
+    position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+    background-image: 
+        linear-gradient(rgba(0, 243, 255, 0.03) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(0, 243, 255, 0.03) 1px, transparent 1px);
+    background-size: 40px 40px;
+    pointer-events: none; z-index: 0;
+}
+
+.scan-line {
+    position: fixed; top: 0; left: 0; width: 100%; height: 5px;
+    background: linear-gradient(to bottom, transparent, rgba(0, 243, 255, 0.2));
+    animation: scan 6s linear infinite;
+    pointer-events: none; z-index: 1;
+}
+@keyframes scan { 0% { top: -10%; } 100% { top: 110%; } }
+
+.app-container {
+    position: relative; z-index: 2;
+    display: grid; grid-template-columns: 1fr 380px; height: 100vh;
+    gap: 10px; padding: 10px;
+}
+
+/* HUD Panel 共用樣式 */
+.hud-panel {
+    background: var(--bg-panel);
+    border: 1px solid var(--border-color);
+    backdrop-filter: blur(10px);
+    box-shadow: 0 0 20px rgba(0, 0, 0, 0.5);
+}
+
+/* HEADER */
+.header-bar {
+    height: 80px; display: flex; justify-content: space-between; align-items: center;
+    padding: 0 30px; margin-bottom: 10px;
+    clip-path: polygon(0 0, 100% 0, 100% 80%, 98% 100%, 2% 100%, 0 80%);
+}
+.logo { 
+    font-family: 'Orbitron', sans-serif; 
+    font-size: 1.8rem; font-weight: 700; 
+    color: var(--neon-cyan); text-shadow: 0 0 10px var(--neon-cyan);
+}
+.logo small { font-size: 0.8rem; color: var(--text-dim); letter-spacing: 2px; display: block; }
+
+.header-right { display: flex; gap: 30px; }
+.metric-group { text-align: right; }
+.metric-group .label { font-size: 0.7rem; color: var(--neon-cyan); letter-spacing: 1px; display: block; }
+.metric-group .value { font-family: 'Orbitron', monospace; font-size: 1.4rem; font-weight: 700; }
+.status-ok { color: var(--neon-green); text-shadow: 0 0 5px var(--neon-green); }
+
+/* CANVAS AREA */
+.main-view { display: flex; flex-direction: column; height: 100%; }
+.canvas-wrapper {
+    flex: 1; position: relative;
+    border: 1px solid var(--border-color);
+    background: rgba(0, 0, 0, 0.3);
+    overflow: hidden;
+}
+/* 四角裝飾 */
+.canvas-wrapper::before {
+    content: ''; position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+    box-shadow: inset 0 0 50px rgba(0,0,0,0.8); pointer-events: none;
+}
+
+canvas { width: 100%; height: 100%; display: block; cursor: crosshair; }
+
+.overlay-ui { position: absolute; pointer-events: none; color: var(--text-dim); font-size: 0.8rem; font-family: 'Orbitron'; letter-spacing: 1px; }
+.top-left { top: 20px; left: 20px; border-left: 2px solid var(--neon-cyan); padding-left: 10px; }
+.bottom-right { bottom: 20px; right: 20px; }
+.hud-hint { background: rgba(0, 243, 255, 0.1); padding: 5px 10px; border: 1px solid var(--neon-cyan); color: var(--neon-cyan); }
+
+/* SIDEBAR */
+.sidebar {
+    display: flex; flex-direction: column;
+    clip-path: polygon(0 0, 100% 0, 100% 100%, 0 100%, 0% 50%); /* 簡單切角 */
+}
+.sidebar-header { padding: 20px; text-align: center; border-bottom: 1px solid var(--border-color); }
+.sidebar-header h2 { margin: 0; font-family: 'Orbitron'; color: var(--text-main); letter-spacing: 2px; }
+.decor-line { height: 2px; background: linear-gradient(90deg, transparent, var(--neon-cyan), transparent); margin-top: 10px; }
+
+.panel-section { flex: 1; padding: 20px; display: flex; flex-direction: column; overflow: hidden; }
+.section-title { font-size: 0.9rem; color: var(--neon-cyan); margin-bottom: 15px; padding-left: 10px; border-left: 3px solid var(--neon-cyan); }
+
+/* 車輛卡片 */
+.vehicle-list { overflow-y: auto; padding-right: 5px; }
+.v-card {
+    background: rgba(255, 255, 255, 0.03);
+    margin-bottom: 12px; padding: 12px;
+    border-left: 3px solid transparent;
+    transition: all 0.2s; cursor: pointer;
+    position: relative;
+    clip-path: polygon(0 0, 100% 0, 100% 85%, 95% 100%, 0 100%);
+}
+.v-card:hover { background: rgba(0, 243, 255, 0.08); border-left-color: var(--text-dim); }
+.v-card.active { 
+    background: linear-gradient(90deg, rgba(0, 243, 255, 0.15), transparent); 
+    border-left-color: var(--neon-cyan);
+    box-shadow: 0 0 15px rgba(0, 243, 255, 0.1);
+}
+
+.v-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+.v-id { font-family: 'Orbitron'; font-weight: bold; font-size: 1.1rem; }
+.v-soc-box { font-family: 'Consolas'; font-weight: bold; }
+
+.v-bars { display: flex; flex-direction: column; gap: 4px; }
+.bar-bg { width: 100%; height: 4px; background: #333; }
+.bar-fill { height: 100%; background: var(--neon-cyan); width: 0%; transition: width 0.5s; box-shadow: 0 0 5px var(--neon-cyan); }
+
+.v-footer { display: flex; justify-content: space-between; font-size: 0.8rem; color: var(--text-dim); margin-top: 8px; }
+
+/* 詳細資訊卡 */
+.info-card {
+    margin: 0 20px 20px; background: rgba(0, 0, 0, 0.4);
+    border: 1px solid var(--border-color);
+    display: flex; flex-direction: column;
+    animation: slideUp 0.3s ease-out;
+}
+.hidden { display: none; }
+
+.card-header { 
+    padding: 10px 15px; background: rgba(0, 243, 255, 0.1); 
+    display: flex; justify-content: space-between; align-items: center;
+}
+.card-header h3 { margin: 0; font-family: 'Orbitron'; font-size: 1rem; color: var(--neon-cyan); }
+.card-tag { font-size: 0.7rem; background: #000; padding: 2px 6px; border: 1px solid var(--neon-cyan); color: var(--neon-cyan); }
+
+.card-body { padding: 15px; }
+.img-frame { 
+    position: relative; height: 140px; border: 1px solid #444; margin-bottom: 10px; overflow: hidden;
+}
+.img-frame img { width: 100%; height: 100%; object-fit: cover; }
+.scan-overlay {
+    position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+    background: repeating-linear-gradient(0deg, transparent 0px, transparent 2px, rgba(0, 243, 255, 0.1) 3px);
+    pointer-events: none;
+}
+.card-footer { display: flex; justify-content: space-between; margin-top: 10px; border-top: 1px solid #333; padding-top: 10px; }
+.data-point { display: flex; flex-direction: column; }
+.data-point .lbl { font-size: 0.7rem; color: var(--text-dim); }
+.data-point .val { font-family: 'Orbitron'; color: var(--neon-green); font-size: 1.1rem; }
+
+/* 底部裝飾 */
+.sidebar-footer { padding: 10px 20px; background: rgba(0,0,0,0.3); border-top: 1px solid #333; }
+.loading-bar { height: 2px; background: #333; margin-bottom: 5px; overflow: hidden; }
+.loading-bar .bar-fill { width: 50%; animation: load 2s infinite alternate; background: var(--neon-cyan); }
+.terminal-text { font-family: 'Consolas'; font-size: 0.7rem; color: var(--neon-green); }
+
+@keyframes slideUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes load { from { width: 20%; margin-left: 0; } to { width: 20%; margin-left: 80%; } }
+
+/* Scrollbar */
+.custom-scroll::-webkit-scrollbar { width: 5px; }
+.custom-scroll::-webkit-scrollbar-thumb { background: var(--neon-cyan); border-radius: 2px; }
+.custom-scroll::-webkit-scrollbar-track { background: rgba(0,0,0,0.3); }
