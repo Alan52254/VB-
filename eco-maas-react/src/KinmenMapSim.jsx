@@ -388,12 +388,71 @@ const KinmenMapSim = ({ onSimulationUpdate, isRunningExternal }) => {
 
       <div style={styles.mainLayout}>
         <div style={styles.mapSection}>
-          <svg width="100%" height="100%" viewBox={`0 0 ${LOGICAL_WIDTH} ${LOGICAL_HEIGHT}`} preserveAspectRatio="none" style={{position: 'absolute', opacity: 0.2}}>
-             <path d="M 80 200 Q 200 100 350 150 T 600 50 L 750 100 L 780 200 Q 700 300 650 250 T 450 350 L 400 450 L 150 480 L 50 350 Z" fill="#0f766e" />
-             <circle cx="50" cy="250" r="30" fill="#0f766e" />
-          </svg>
+          {/* 🔥 新增:內嵌 CSS 動畫樣式,讓路線流動 */}
+          <style>
+            {`
+              @keyframes dash-flow {
+                to { stroke-dashoffset: -24; }
+              }
+              @keyframes island-pulse {
+                0% { opacity: 0.3; filter: drop-shadow(0 0 5px #0f766e); }
+                50% { opacity: 0.5; filter: drop-shadow(0 0 15px #2dd4bf); }
+                100% { opacity: 0.3; filter: drop-shadow(0 0 5px #0f766e); }
+              }
+              .road-flow {
+                animation: dash-flow 1s linear infinite;
+              }
+              .island-glow {
+                animation: island-pulse 4s ease-in-out infinite;
+              }
+            `}
+          </style>
+
+          {/* 第一層 SVG:金門底圖 (全息投影風格) */}
           <svg width="100%" height="100%" viewBox={`0 0 ${LOGICAL_WIDTH} ${LOGICAL_HEIGHT}`} preserveAspectRatio="none" style={{position: 'absolute'}}>
-            <path d={ROAD_PATH_SVG} fill="none" stroke="#475569" strokeWidth="3" strokeDasharray="8 4" />
+             <defs>
+               {/* 定義漸層色:讓島嶼有立體感 */}
+               <linearGradient id="islandGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+                 <stop offset="0%" stopColor="#0f766e" stopOpacity="0.4" />
+                 <stop offset="100%" stopColor="#115e59" stopOpacity="0.1" />
+               </linearGradient>
+               {/* 網格圖案:增加科技感 */}
+               <pattern id="gridPattern" width="20" height="20" patternUnits="userSpaceOnUse">
+                 <path d="M 20 0 L 0 0 0 20" fill="none" stroke="rgba(45, 212, 191, 0.1)" strokeWidth="0.5"/>
+               </pattern>
+             </defs>
+
+             {/* 島嶼本體:套用漸層 + 呼吸燈動畫 */}
+             <path
+               className="island-glow"
+               d="M 80 200 Q 200 100 350 150 T 600 50 L 750 100 L 780 200 Q 700 300 650 250 T 450 350 L 400 450 L 150 480 L 50 350 Z"
+               fill="url(#islandGradient)"
+               stroke="#2dd4bf"
+               strokeWidth="1"
+               strokeOpacity="0.3"
+             />
+             {/* 疊加一層網格 */}
+             <path
+               d="M 80 200 Q 200 100 350 150 T 600 50 L 750 100 L 780 200 Q 700 300 650 250 T 450 350 L 400 450 L 150 480 L 50 350 Z"
+               fill="url(#gridPattern)"
+             />
+          </svg>
+
+          {/* 第二層 SVG:路線 (動態流動) */}
+          <svg width="100%" height="100%" viewBox={`0 0 ${LOGICAL_WIDTH} ${LOGICAL_HEIGHT}`} preserveAspectRatio="none" style={{position: 'absolute'}}>
+            {/* 路線光暈 (底層發光) */}
+            <path d={ROAD_PATH_SVG} fill="none" stroke="#38bdf8" strokeWidth="4" strokeOpacity="0.1" strokeLinecap="round" />
+
+            {/* 實際路線 (虛線 + 動畫) */}
+            <path
+              className="road-flow"
+              d={ROAD_PATH_SVG}
+              fill="none"
+              stroke="#94a3b8"
+              strokeWidth="2"
+              strokeDasharray="6 6"
+              strokeOpacity="0.6"
+            />
           </svg>
 
           {/* ✅ 站點渲染優化:使用專屬 Icon */}
