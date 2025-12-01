@@ -1,6 +1,6 @@
 // KinmenMapSim.jsx
 import React, { useState, useEffect, useRef } from 'react';
-import { Wind, Users, BarChart3, RotateCcw, MapPin, Zap, Gauge, History, Cpu, X } from 'lucide-react';
+import { Wind, Users, BarChart3, RotateCcw, MapPin, Zap, Gauge, History, Cpu, X, BusFront, Battery, BatteryCharging } from 'lucide-react';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, Line } from 'recharts';
 
 const LOGICAL_WIDTH = 800;
@@ -386,14 +386,55 @@ const KinmenMapSim = ({ onSimulationUpdate, isRunningExternal }) => {
             </div>
           ))}
 
-          {vehicles.map(v => (
-            <div key={v.id} onClick={(e) => { e.stopPropagation(); setSelectedVehicleId(v.id); }} style={{ ...styles.vehicleMarker, left: `${(v.x / LOGICAL_WIDTH) * 100}%`, top: `${(v.y / LOGICAL_HEIGHT) * 100}%`, transform: `translate(-50%, -50%) scale(${selectedVehicleId === v.id ? 1.3 : 1})`, zIndex: selectedVehicleId === v.id ? 100 : 20 }}>
-               <div style={{ width: '36px', height: '36px', borderRadius: '8px', backgroundColor: v.status === 'charging' ? '#b45309' : (v.platooning ? '#065f46' : '#1e40af'), border: selectedVehicleId === v.id ? '2px solid #ffffff' : `2px solid ${v.platooning ? '#4ade80' : '#3b82f6'}`, display: 'flex', justifyContent: 'center', alignItems: 'center', color: 'white', fontWeight: 'bold', fontSize: '12px', boxShadow: '0 4px 10px rgba(0,0,0,0.5)' }}>
-                 {v.id} {v.platooning && <Wind size={14} style={{position: 'absolute', right: '-6px', top: '-6px', color: '#4ade80', backgroundColor: '#064e3b', borderRadius: '50%', padding: '1px'}} />}
-               </div>
-               <div style={{width: '36px', height: '4px', backgroundColor: '#334155', marginTop: '2px', borderRadius: '2px'}}><div style={{width: `${v.battery}%`, height: '100%', backgroundColor: v.battery < 20 ? '#ef4444' : '#22c55e'}} /></div>
-            </div>
-          ))}
+          {/* ✅ 新的程式碼 (第一階段:換圖示) */}
+          {vehicles.map(v => {
+            // 決定顏色:充電中(橘黃) vs 行駛中(藍色/綠色)
+            const mainColor = v.status === 'charging' ? '#f59e0b' : (v.platooning ? '#10b981' : '#3b82f6');
+
+            return (
+              <div
+                key={v.id}
+                onClick={(e) => { e.stopPropagation(); setSelectedVehicleId(v.id); }}
+                style={{
+                  ...styles.vehicleMarker, // 保持原本的絕對定位
+                  left: `${(v.x / LOGICAL_WIDTH) * 100}%`,
+                  top: `${(v.y / LOGICAL_HEIGHT) * 100}%`,
+                  // 選中時放大一點
+                  transform: `translate(-50%, -50%) scale(${selectedVehicleId === v.id ? 1.2 : 1})`,
+                  zIndex: selectedVehicleId === v.id ? 100 : 20,
+                  // 新增:讓內部元素置中對齊
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center'
+                }}
+              >
+                {/* 1. 巴士主體圖示 */}
+                <div style={{
+                    position: 'relative',
+                    padding: '4px',
+                    borderRadius: '8px',
+                    backgroundColor: mainColor, // 使用上面決定的顏色
+                    boxShadow: `0 4px 12px ${mainColor}66`, // 加上同色系的光暈
+                    border: selectedVehicleId === v.id ? '2px solid white' : 'none',
+                    transition: 'all 0.3s ease'
+                }}>
+                    <BusFront size={24} color="white" strokeWidth={1.5} />
+
+                    {/* 如果在組隊,右上角顯示一個小風標 */}
+                    {v.platooning && (
+                       <div style={{position: 'absolute', top: -5, right: -5, backgroundColor: '#064e3b', borderRadius: '50%', padding: '2px', border: '1px solid #10b981'}}>
+                         <Wind size={10} color="#10b981" />
+                       </div>
+                    )}
+                </div>
+
+                {/* 2. 保留舊版的電池條 (暫時) */}
+                <div style={{width: '32px', height: '4px', backgroundColor: '#334155', marginTop: '4px', borderRadius: '2px', overflow: 'hidden'}}>
+                  <div style={{width: `${v.battery}%`, height: '100%', backgroundColor: v.battery < 20 ? '#ef4444' : '#22c55e', transition: 'width 0.5s'}} />
+                </div>
+              </div>
+            );
+          })}
 
           {activeSpot && (
             <div style={styles.spotCard}>
