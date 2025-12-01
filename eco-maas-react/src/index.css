@@ -1,7 +1,4 @@
+/* src/index.css */
 @import "tailwindcss"; 
 /* 注意：Tailwind v4.0 的寫法變了，如果你安裝的是 v4，要用上面這行。
    但如果你是用 v3 (大部分舊專案)，則是用下面這三行： */
-
-@tailwind base;
-@tailwind components;
-@tailwind utilities;

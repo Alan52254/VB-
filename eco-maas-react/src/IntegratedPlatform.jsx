@@ -1,3 +1,4 @@
+// IntegratedPlatform.jsx
 import React, { useState } from 'react';
 import KinmenMapSim from './KinmenMapSim';
 import DashboardMonitor from './DashboardMonitor';
