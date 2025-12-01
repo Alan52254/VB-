@@ -1,6 +1,11 @@
 // KinmenMapSim.jsx
 import React, { useState, useEffect, useRef } from 'react';
-import { Wind, Users, BarChart3, RotateCcw, MapPin, Zap, Gauge, History, Cpu, X, BusFront, Battery, BatteryCharging } from 'lucide-react';
+import {
+  Wind, Users, BarChart3, RotateCcw, MapPin, Zap, Gauge, History, Cpu, X,
+  BusFront, Battery, BatteryCharging,
+  // 👇 這次新增的圖示
+  Anchor, Plane, Mountain, Castle, Flag, Home, Warehouse
+} from 'lucide-react';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, Line } from 'recharts';
 
 const LOGICAL_WIDTH = 800;
@@ -66,6 +71,19 @@ const KinmenMapSim = ({ onSimulationUpdate, isRunningExternal }) => {
   const [logs, setLogs] = useState([]);
   const [mode, setMode] = useState('rl');
   const [metrics, setMetrics] = useState({ totalEnergy: 0, totalServed: 0, totalDist: 0, platoonDist: 0, emptyDist: 0, totalWaitTime: 0 });
+
+  // 🗺️ 站點圖示對照表 (Icon Mapping)
+  const STATION_CONFIG = {
+    'depot':     { icon: Warehouse, color: '#fbbf24', label: '總站' }, // 金城總站
+    'juguang':   { icon: Flag,      color: '#f87171', label: '地標' }, // 莒光樓
+    'zhaishan':  { icon: Anchor,    color: '#60a5fa', label: '坑道' }, // 翟山坑道 (靠海)
+    'chenggong': { icon: Castle,    color: '#f472b6', label: '洋樓' }, // 陳景蘭洋樓
+    'airport':   { icon: Plane,     color: '#38bdf8', label: '機場' }, // 尚義機場
+    'taiwu':     { icon: Mountain,  color: '#4ade80', label: '登山' }, // 太武山
+    'shanhou':   { icon: Home,      color: '#fb923c', label: '聚落' }, // 山后民俗村
+    'mashan':    { icon: Zap,       color: '#a78bfa', label: '觀測' }, // 馬山 (用Zap代表軍事/訊號)
+    'guningtou': { icon: History,   color: '#94a3b8', label: '戰史' }, // 古寧頭
+  };
 
   // 1. Ref 解決閉包
   const latestDataRef = useRef({ vehicles: [], gameTime: 0, metrics: {}, stations: [], mode: 'rl' });
@@ -378,13 +396,85 @@ const KinmenMapSim = ({ onSimulationUpdate, isRunningExternal }) => {
             <path d={ROAD_PATH_SVG} fill="none" stroke="#475569" strokeWidth="3" strokeDasharray="8 4" />
           </svg>
 
-          {stations.map(s => (
-            <div key={s.id} onClick={(e) => { e.stopPropagation(); setActiveSpot(getLoc(s.id)); }} style={{ position: 'absolute', left: `${(s.x / LOGICAL_WIDTH) * 100}%`, top: `${(s.y / LOGICAL_HEIGHT) * 100}%`, transform: 'translate(-50%, -50%)', display: 'flex', flexDirection: 'column', alignItems: 'center', cursor: 'pointer' }}>
-               <div style={{ width: '14px', height: '14px', borderRadius: '50%', backgroundColor: s.type === 'depot' ? '#eab308' : '#2dd4bf', border: '2px solid white', boxShadow: '0 0 10px #2dd4bf' }} />
-               <div style={{marginTop: '4px', fontSize: '10px', fontWeight: 'bold', backgroundColor: 'rgba(0,0,0,0.7)', padding: '2px 6px', borderRadius: '4px', whiteSpace: 'nowrap'}}>{s.name}</div>
-               {s.type !== 'depot' && s.queue > 0 && <div style={{marginTop: '2px', fontSize: '10px', display: 'flex', alignItems: 'center', gap: '3px', color: '#f87171'}}><Users size={10} /> {s.queue}</div>}
-            </div>
-          ))}
+          {/* ✅ 站點渲染優化:使用專屬 Icon */}
+          {stations.map(s => {
+            const config = STATION_CONFIG[s.id] || { icon: MapPin, color: '#cbd5e1' }; // 預防性設定
+            const IconComponent = config.icon;
+            const isHighlighted = activeSpot?.id === s.id; // 如果被點選,會有特效
+
+            return (
+              <div
+                key={s.id}
+                onClick={(e) => { e.stopPropagation(); setActiveSpot(getLoc(s.id)); }}
+                style={{
+                  position: 'absolute',
+                  left: `${(s.x / LOGICAL_WIDTH) * 100}%`,
+                  top: `${(s.y / LOGICAL_HEIGHT) * 100}%`,
+                  transform: 'translate(-50%, -50%)',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  cursor: 'pointer',
+                  zIndex: isHighlighted ? 50 : 10 // 被點選時浮到最上層
+                }}
+              >
+                 {/* 1. 圖示本體 */}
+                 <div style={{
+                   width: '32px',
+                   height: '32px',
+                   borderRadius: '50%',
+                   backgroundColor: '#1e293b', // 深色底
+                   border: `2px solid ${config.color}`, // 根據不同站點有不同邊框色
+                   display: 'flex',
+                   justifyContent: 'center',
+                   alignItems: 'center',
+                   boxShadow: isHighlighted ? `0 0 15px ${config.color}` : '0 4px 6px rgba(0,0,0,0.3)', // 發光特效
+                   transition: 'all 0.3s ease',
+                   transform: isHighlighted ? 'scale(1.2)' : 'scale(1)'
+                 }}>
+                    <IconComponent size={16} color={config.color} />
+                 </div>
+
+                 {/* 2. 站名標籤 */}
+                 <div style={{
+                   marginTop: '6px',
+                   fontSize: '11px',
+                   fontWeight: 'bold',
+                   color: '#e2e8f0',
+                   textShadow: '0 2px 4px rgba(0,0,0,0.8)', // 讓文字在深色背景更清楚
+                   backgroundColor: 'rgba(15, 23, 42, 0.6)',
+                   padding: '2px 6px',
+                   borderRadius: '4px',
+                   border: isHighlighted ? `1px solid ${config.color}` : '1px solid transparent'
+                 }}>
+                   {s.name}
+                 </div>
+
+                 {/* 3. 排隊人數氣泡 (有人排隊才顯示) */}
+                 {s.type !== 'depot' && s.queue > 0 && (
+                   <div style={{
+                     position: 'absolute',
+                     top: -5,
+                     right: -5,
+                     backgroundColor: '#ef4444',
+                     color: 'white',
+                     fontSize: '10px',
+                     fontWeight: 'bold',
+                     width: '18px',
+                     height: '18px',
+                     borderRadius: '50%',
+                     display: 'flex',
+                     justifyContent: 'center',
+                     alignItems: 'center',
+                     border: '2px solid #1e293b',
+                     animation: 'bounce 0.5s infinite alternate' // 讓它跳動,吸引注意
+                   }}>
+                     {s.queue}
+                   </div>
+                 )}
+              </div>
+            );
+          })}
 
           {/* ✅ 第二階段:加上車號與詳細數據標籤 */}
           {vehicles.map(v => {
