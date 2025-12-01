@@ -386,52 +386,94 @@ const KinmenMapSim = ({ onSimulationUpdate, isRunningExternal }) => {
             </div>
           ))}
 
-          {/* ✅ 新的程式碼 (第一階段:換圖示) */}
+          {/* ✅ 第二階段:加上車號與詳細數據標籤 */}
           {vehicles.map(v => {
-            // 決定顏色:充電中(橘黃) vs 行駛中(藍色/綠色)
-            const mainColor = v.status === 'charging' ? '#f59e0b' : (v.platooning ? '#10b981' : '#3b82f6');
+            // 決定顏色邏輯
+            const isCharging = v.status === 'charging';
+            const mainColor = isCharging ? '#f59e0b' : (v.platooning ? '#10b981' : '#3b82f6');
+            const batteryColor = v.battery < 20 ? '#ef4444' : (v.battery > 80 ? '#4ade80' : '#e2e8f0');
 
             return (
               <div
                 key={v.id}
                 onClick={(e) => { e.stopPropagation(); setSelectedVehicleId(v.id); }}
                 style={{
-                  ...styles.vehicleMarker, // 保持原本的絕對定位
+                  ...styles.vehicleMarker,
                   left: `${(v.x / LOGICAL_WIDTH) * 100}%`,
                   top: `${(v.y / LOGICAL_HEIGHT) * 100}%`,
-                  // 選中時放大一點
-                  transform: `translate(-50%, -50%) scale(${selectedVehicleId === v.id ? 1.2 : 1})`,
+                  transform: `translate(-50%, -50%) scale(${selectedVehicleId === v.id ? 1.1 : 1})`,
                   zIndex: selectedVehicleId === v.id ? 100 : 20,
-                  // 新增:讓內部元素置中對齊
                   display: 'flex',
                   flexDirection: 'column',
-                  alignItems: 'center'
+                  alignItems: 'center',
+                  gap: '2px', // 讓元件之間有一點點空隙
+                  transition: 'all 0.1s linear' // 讓移動更滑順
                 }}
               >
-                {/* 1. 巴士主體圖示 */}
+                {/* 1. 頭頂車號 (Badge) */}
+                <div style={{
+                  backgroundColor: 'rgba(15, 23, 42, 0.8)', // 深色半透明背景
+                  color: '#e2e8f0',
+                  padding: '1px 6px',
+                  borderRadius: '10px',
+                  fontSize: '10px',
+                  fontWeight: 'bold',
+                  whiteSpace: 'nowrap',
+                  boxShadow: '0 2px 4px rgba(0,0,0,0.5)',
+                  marginBottom: '2px'
+                }}>
+                  #{v.id}
+                </div>
+
+                {/* 2. 巴士主體 (維持上一階段的設計) */}
                 <div style={{
                     position: 'relative',
-                    padding: '4px',
-                    borderRadius: '8px',
-                    backgroundColor: mainColor, // 使用上面決定的顏色
-                    boxShadow: `0 4px 12px ${mainColor}66`, // 加上同色系的光暈
-                    border: selectedVehicleId === v.id ? '2px solid white' : 'none',
-                    transition: 'all 0.3s ease'
+                    padding: '6px',
+                    borderRadius: '12px',
+                    backgroundColor: mainColor,
+                    boxShadow: `0 0 15px ${mainColor}80`, // 讓光暈更明顯一點
+                    border: selectedVehicleId === v.id ? '2px solid white' : '1px solid rgba(255,255,255,0.2)',
                 }}>
-                    <BusFront size={24} color="white" strokeWidth={1.5} />
+                    {/* 如果是充電中,顯示閃電圖示,否則顯示巴士 */}
+                    {isCharging ? <Zap size={20} color="white" fill="white" /> : <BusFront size={20} color="white" strokeWidth={2} />}
 
-                    {/* 如果在組隊,右上角顯示一個小風標 */}
+                    {/* 組隊標記 */}
                     {v.platooning && (
-                       <div style={{position: 'absolute', top: -5, right: -5, backgroundColor: '#064e3b', borderRadius: '50%', padding: '2px', border: '1px solid #10b981'}}>
+                       <div style={{position: 'absolute', top: -4, right: -4, backgroundColor: '#064e3b', borderRadius: '50%', padding: '2px', border: '1px solid #10b981'}}>
                          <Wind size={10} color="#10b981" />
                        </div>
                     )}
                 </div>
 
-                {/* 2. 保留舊版的電池條 (暫時) */}
-                <div style={{width: '32px', height: '4px', backgroundColor: '#334155', marginTop: '4px', borderRadius: '2px', overflow: 'hidden'}}>
-                  <div style={{width: `${v.battery}%`, height: '100%', backgroundColor: v.battery < 20 ? '#ef4444' : '#22c55e', transition: 'width 0.5s'}} />
+                {/* 3. 腳下資訊列 (新功能!) */}
+                <div style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  backgroundColor: 'rgba(15, 23, 42, 0.9)', // 深黑背景
+                  padding: '2px 6px',
+                  borderRadius: '6px',
+                  marginTop: '2px',
+                  border: '1px solid #334155',
+                  boxShadow: '0 2px 5px rgba(0,0,0,0.5)'
+                }}>
+                  {/* 載客數 */}
+                  <div style={{display: 'flex', alignItems: 'center', gap: '2px'}}>
+                    <Users size={10} color="#94a3b8" />
+                    <span style={{fontSize: '9px', fontWeight: 'bold', color: '#f1f5f9'}}>{Math.round(v.passengers)}</span>
+                  </div>
+
+                  {/* 分隔線 */}
+                  <div style={{width: '1px', height: '8px', backgroundColor: '#475569'}}></div>
+
+                  {/* 電量 */}
+                  <div style={{display: 'flex', alignItems: 'center', gap: '2px'}}>
+                    {/* 根據狀態顯示不同電池圖示 */}
+                    {isCharging ? <BatteryCharging size={10} color="#fbbf24" /> : <Battery size={10} color={batteryColor} />}
+                    <span style={{fontSize: '9px', fontWeight: 'bold', color: batteryColor}}>{Math.round(v.battery)}%</span>
+                  </div>
                 </div>
+
               </div>
             );
           })}
