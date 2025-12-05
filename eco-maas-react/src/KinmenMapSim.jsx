@@ -1546,7 +1546,13 @@ const KinmenMapSim = ({ onSimulationUpdate, isRunningExternal }) => {
                       </defs>
                       <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
                       <XAxis dataKey="time" hide />
-                      <YAxis yAxisId="left" stroke="#94a3b8" fontSize={10} label={{ value: 'kWh', angle: -90, position: 'insideLeft', fill: '#94a3b8' }}/>
+                      <YAxis
+                        yAxisId="left"
+                        stroke="#94a3b8"
+                        fontSize={10}
+                        label={{ value: 'kWh', angle: -90, position: 'insideLeft', fill: '#94a3b8' }}
+                        domain={[0, dataMax => Math.max(dataMax * 1.1, 0.5)]}
+                      />
                       <Tooltip contentStyle={{backgroundColor: '#1e293b', borderColor: '#334155', color: '#f1f5f9'}} />
                       <Legend verticalAlign="top" height={36} iconType="circle"/>
 

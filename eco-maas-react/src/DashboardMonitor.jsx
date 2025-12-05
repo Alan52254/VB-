@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, AreaChart, Area } from 'recharts';
 import {
-  Activity, BatteryCharging, Wind, Users, Cpu, Zap, MapPin, RotateCcw, Terminal, ShieldCheck, Clock, Layers, Car, Leaf, Smartphone, TrendingDown, Sparkles
+  Activity, BatteryCharging, Wind, Users, Cpu, Zap, MapPin, RotateCcw, ShieldCheck, Clock, Layers, Car, Leaf, Smartphone, TrendingDown
 } from 'lucide-react';
 
 // --- 參數設定 ---
@@ -23,10 +23,20 @@ const DashboardMonitor = ({ externalData }) => {
   });
   const [windScenario, setWindScenario] = useState("中風能");
   const logEndRef = useRef(null);
+  const scrollContainerRef = useRef(null); // 用來抓取捲動容器
 
-  // 自動捲動 Log
+  // ✅ 智慧滾動邏輯
   useEffect(() => {
-    logEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    const container = scrollContainerRef.current;
+    if (!container) return;
+
+    // 判斷使用者是否「正在看歷史紀錄」(即卷軸不在最底部)
+    // 容許 50px 的誤差
+    const isAtBottom = container.scrollHeight - container.scrollTop - container.clientHeight < 50;
+
+    if (isAtBottom) {
+      logEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    }
   }, [agentLogs]);
 
   // --- 核心邏輯：接收外部數據 ---
@@ -70,14 +80,14 @@ const DashboardMonitor = ({ externalData }) => {
             ...prev,
             {
               time: currentStep,
-              // 太陽能發電 (對應原本的 windSupply)
-              windSupply: metrics.gridInfo.solar.toFixed(1),
-              // 電網負載
-              gridLoad: metrics.gridInfo.load.toFixed(1)
+              // 太陽能發電 (對應原本的 windSupply) - 🔥 轉成數字避免 Recharts 渲染錯誤
+              windSupply: Number(metrics.gridInfo.solar.toFixed(1)),
+              // 電網負載 - 🔥 轉成數字避免 Recharts 渲染錯誤
+              gridLoad: Number(metrics.gridInfo.load.toFixed(1))
             }
           ];
-          // 保持最近 50 筆數據
-          if (newData.length > 50) return newData.slice(newData.length - 50);
+          // 保持最近 40 筆數據
+          if (newData.length > 40) return newData.slice(newData.length - 40);
           return newData;
         });
       }
@@ -275,10 +285,10 @@ const DashboardMonitor = ({ externalData }) => {
                   </defs>
                   <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
                   <XAxis dataKey="time" stroke="#94a3b8" tick={{fontSize: 10}} label={{ value: 'Time (min)', position: 'insideBottom', offset: -5, fill: '#64748b', fontSize: 10 }} />
-                  <YAxis stroke="#94a3b8" tick={{fontSize: 10}} label={{ value: '%', angle: -90, position: 'insideLeft', fill: '#64748b' }} />
+                  <YAxis type="number" domain={[0, 100]} stroke="#94a3b8" tick={{fontSize: 10}} label={{ value: '%', angle: -90, position: 'insideLeft', fill: '#64748b' }} />
                   <Tooltip contentStyle={{ backgroundColor: '#1e293b', borderColor: '#334155', fontSize: '12px' }} />
-                  <Area type="monotone" dataKey="windSupply" name="太陽能發電" stroke="#facc15" fillOpacity={1} fill="url(#colorSolar)" strokeWidth={2} />
-                  <Area type="monotone" dataKey="gridLoad" name="電網負載" stroke="#f59e0b" fillOpacity={1} fill="url(#colorLoad)" strokeWidth={2} />
+                  <Area type="monotone" dataKey="windSupply" name="太陽能發電" stroke="#facc15" fillOpacity={1} fill="url(#colorSolar)" strokeWidth={2} isAnimationActive={false} />
+                  <Area type="monotone" dataKey="gridLoad" name="電網負載" stroke="#f59e0b" fillOpacity={1} fill="url(#colorLoad)" strokeWidth={2} isAnimationActive={false} />
                 </AreaChart>
               </ResponsiveContainer>
             </div>
@@ -320,11 +330,15 @@ const DashboardMonitor = ({ externalData }) => {
             </div>
           </div>
 
-          <div className="bg-[#1e293b] p-4 rounded-2xl border border-slate-700/50 flex-1 flex flex-col min-h-[200px]">
+          {/* ===== Agent 決策日誌 (暫時隱藏) ===== */}
+          {/* <div className="bg-[#1e293b] p-4 rounded-2xl border border-slate-700/50 flex-1 flex flex-col min-h-[200px]">
             <h3 className="flex items-center gap-2 text-xs font-bold text-slate-400 mb-2 uppercase tracking-wider border-b border-slate-700 pb-2">
               <Terminal size={14} /> AI 決策串流
             </h3>
-            <div className="flex-1 overflow-y-auto pr-2 font-mono text-xs space-y-2">
+            <div
+              ref={scrollContainerRef}
+              className="flex-1 overflow-y-auto pr-2 font-mono text-xs space-y-2"
+            >
               {agentLogs.length === 0 && <div className="text-slate-600 italic text-center mt-4">等待決策數據...</div>}
 
               {agentLogs.map((log) => {
@@ -357,7 +371,7 @@ const DashboardMonitor = ({ externalData }) => {
               })}
               <div ref={logEndRef} />
             </div>
-          </div>
+          </div> */}
         </div>
       </main>
     </div>
