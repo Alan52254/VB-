@@ -482,6 +482,9 @@ const KinmenMapSim = ({ onSimulationUpdate, isRunningExternal }) => {
   // 每次 render 時透過 useEffect 更新 Ref，Game Loop 再從 Ref 讀取最新值。
   const latestDataRef = useRef({ vehicles: [], gameTime: 0, metrics: {}, stations: [], mode: 'rl' });
 
+  // ⚡ 新增：專門用來解決「閉包陷阱」的能耗累加器
+  const energyAccumulatorRef = useRef({ total: 0, baseline: 0 });
+
   // 監聽 State 變化，同步更新 Ref
   useEffect(() => {
     latestDataRef.current = { vehicles, gameTime, metrics, stations, mode };
@@ -609,10 +612,22 @@ const KinmenMapSim = ({ onSimulationUpdate, isRunningExternal }) => {
     setGameTime(480); // 08:00
     setStatsHistory([]);
     setLogs([]);
-    setMetrics({ totalEnergy: 0, totalServed: 0, totalDist: 0, platoonDist: 0, emptyDist: 0, totalWaitTime: 0 });
+    setMetrics({
+      totalEnergy: 0,
+      totalEnergyBaseline: 0, // 🔥 新增：Baseline 对照组耗能
+      totalServed: 0,
+      totalDist: 0,
+      platoonDist: 0,
+      emptyDist: 0,
+      totalWaitTime: 0
+    });
+
+    // 🔥 加入這行：重置累加器
+    energyAccumulatorRef.current = { total: 0, baseline: 0 };
+
     setSelectedVehicleId(null);
     setActiveSpot(getLoc('depot')); // 預設顯示總站卡片
-    
+
     addLog("System", "系統初始化完成。RL Agent 準備就緒。");
   };
 
@@ -682,18 +697,48 @@ const KinmenMapSim = ({ onSimulationUpdate, isRunningExternal }) => {
     const newTime = currentGameTime + 0.5; // 每個 tick 增加 0.5 分鐘
     setGameTime(newTime);
 
-    // 2. 客流生成 (Passenger Generation)
-    // 簡單的隨機模型：有 20% 機率在隨機站點產生乘客
-    if (Math.random() < 0.2) { 
+    // --- 🛑 優化後的乘客生成邏輯 (Traffic Flow Control) ---
+
+    // 1. 計算當前是幾點鐘 (假設 gameTime 是分鐘數，從 0 開始)
+    // gameTime 480 = 早上 8:00
+    const currentHour = Math.floor((newTime / 60) % 24);
+
+    // 2. 定義尖峰時刻 (Morning: 7-9, Evening: 17-19)
+    const isRushHour = (currentHour >= 7 && currentHour <= 9) || (currentHour >= 17 && currentHour <= 19);
+
+    // 3. 基礎生成率：尖峰時段較快，離峰很慢
+    // 之前是 0.2 (每秒判定多次)，現在改成極低機率
+    const spawnRate = isRushHour ? 0.03 : 0.005;
+
+    // 4. 定義站點人氣權重 (Popularity Weights)
+    const STATION_WEIGHTS = {
+      'airport': 2.0,   // 機場人最多
+      'depot': 1.5,     // 總站次之
+      'mashan': 0.8,    // 觀測所人少
+      'taiwu': 0.5,     // 山上人更少
+      'default': 1.0
+    };
+
+    if (Math.random() < spawnRate) {
       setStations(prev => prev.map(s => {
-        if (s.type === 'depot') return s; // 總站不產生初始客流
-        // 根據站點熱門度 (popularity) 決定是否增加排隊人數
-        return Math.random() < s.popularity ? { ...s, queue: s.queue + 1 } : s;
+        if (s.type === 'depot') return s; // 總站通常是終點，產生乘客邏輯可不同，這邊先跳過
+
+        const weight = STATION_WEIGHTS[s.id] || STATION_WEIGHTS['default'];
+
+        // 5. 雙重骰子：全域機率過關後，還要看該站點的權重
+        if (Math.random() < s.popularity * weight) {
+           // 6. 硬上限：超過 30 人就不再排了 (模擬乘客流失)
+           if (s.queue < 30) {
+             return { ...s, queue: s.queue + 1 };
+           }
+        }
+        return s;
       }));
     }
 
     // 暫存本輪迴的累計數據 (用於 KPI 計算)
     let cycleEnergy = 0, cycleDist = 0, cyclePlatoon = 0, cycleEmpty = 0, cycleServed = 0;
+    let cycleEnergyBaseline = 0; // 🌟 新增：累加「如果沒有 AI 介入」會耗多少電
     let logBuffer = [];
     let stationUpdates = {}; // 記錄哪個站點有多少人上車 { stationId: count }
 
@@ -732,42 +777,45 @@ const KinmenMapSim = ({ onSimulationUpdate, isRunningExternal }) => {
       x = currLoc.x + dx * segProg;
       y = currLoc.y + dy * segProg;
 
-      // --- C. 物理感知 (Physics Awareness) ---
-      
-      // 1. 判斷是否組隊 (Platooning Check)
+      // --- ⚡ 双轨能耗计算模型 (Dual-Track Energy Calculation) ---
+
+      // 1. 判断是否组队 (Platooning Logic)
       let isPlatooning = false;
-      if (currentMode === 'rl') { // 只有 RL 模式才啟用組隊功能
+      if (currentMode === 'rl') { // 只有 RL 模式才启用组队功能
         isPlatooning = currentVehicles.some(other =>
           other.id !== v.id &&
-          calcDist({ x, y }, other) < PLATOON_DISTANCE && // 距離小於閾值
-          calcDist({ x, y }, other) > 10 // 避免重疊
+          calcDist({ x, y }, other) < PLATOON_DISTANCE && // 距离小于阈值
+          calcDist({ x, y }, other) > 5 // 避免重叠
         );
       }
 
-      // 2. 風阻係數 (Cd Calculation)
-      // 這就是我們的核心技術亮點：組隊時風阻減半！
-      const currentDragCoeff = isPlatooning ? 0.4 : 0.8; 
-      
-      // 3. 速度計算
-      let baseSpeed = isPlatooning ? 0.005 : 0.004; // 組隊稍快 (跟車效應)
-      // 地形影響：太武山或翟山附近為上坡，速度變慢
-      if (currLoc.id === 'taiwu' || currLoc.id === 'zhaishan') baseSpeed *= 0.8; 
+      // 2. 共同参数
+      let baseSpeed = isPlatooning ? 0.005 : 0.004;
+      if (currLoc.id === 'taiwu' || currLoc.id === 'zhaishan') baseSpeed *= 0.7; // 爬坡变慢
+      const simulatedV = baseSpeed * 150;
+      const massFactor = 1 + (passengers * 0.005);
+      const basePower = 0.5; // 空调、车载系统
 
-      // 4. 功率計算 (kW)
-      const loadFactor = 1 + (passengers * 0.02); // 載重因子
-      const terrainFactor = (currLoc.id === 'taiwu') ? 1.5 : 1.0; // 地形因子
-      const instantPower = (isPlatooning ? 12 : 20) * loadFactor * terrainFactor; // 組隊省電
-      
-      // 5. 能耗計算 (kWh)
-      const energyConsumed = instantPower * (50 / 3600 / 1000) * 10;
+      // 3. 🟢 RL Agent 实际耗能 (考虑 Platooning)
+      const currentDragCoeff = isPlatooning ? 0.3 : 0.8;
+      const aeroPower = 0.5 * currentDragCoeff * Math.pow(simulatedV, 3);
+      const instantPower = (aeroPower + basePower) * massFactor;
+      const energyConsumed = instantPower * 0.002;
+
+      // 4. 🔴 Baseline 影子耗能 (强迫假设没有 AI，永远不组队)
+      const baselineDragCoeff = 0.8; // 永远是单车行驶
+      const baselineAeroPower = 0.5 * baselineDragCoeff * Math.pow(simulatedV, 3);
+      const baselineInstantPower = (baselineAeroPower + basePower) * massFactor;
+      const energyConsumedBaseline = baselineInstantPower * 0.002;
+
+      // 5. 更新变量
       const distMoved = baseSpeed * 100;
-
-      // 更新變數
-      battery -= energyConsumed;
-      cycleEnergy += energyConsumed;
+      battery -= energyConsumed; // 车子实际扣电 (跟随目前模式)
+      cycleEnergy += energyConsumed; // 实际耗能
+      cycleEnergyBaseline += energyConsumedBaseline; // 偷偷记下 Baseline 耗能
       cycleDist += distMoved;
-      if (isPlatooning) cyclePlatoon += distMoved; // 累積組隊里程
-      if (passengers === 0) cycleEmpty += distMoved; // 累積空車里程
+      if (isPlatooning) cyclePlatoon += distMoved; // 累积组队里程
+      if (passengers === 0) cycleEmpty += distMoved; // 累积空车里程
 
       // --- D. 乘客互動 (Boarding/Alighting) ---
       let newProgress = progress + baseSpeed;
@@ -846,27 +894,35 @@ const KinmenMapSim = ({ onSimulationUpdate, isRunningExternal }) => {
       }));
     }
 
-    // 7. 更新 KPI 累積值 (Metrics Accumulation)
+    // 🔥 7. 直接更新 Ref (這是同步的，保證拿到最新值)
+    energyAccumulatorRef.current.total += cycleEnergy;
+    energyAccumulatorRef.current.baseline += cycleEnergyBaseline;
+
+    // 🔥 8. 使用 Ref 的值來更新 React State (Metrics)
     setMetrics(prev => ({
-      totalEnergy: prev.totalEnergy + cycleEnergy,
+      ...prev,
+      totalEnergy: energyAccumulatorRef.current.total, // 改用 Ref
+      totalEnergyBaseline: energyAccumulatorRef.current.baseline, // 改用 Ref
       totalServed: prev.totalServed + cycleServed,
       totalDist: prev.totalDist + cycleDist,
       platoonDist: prev.platoonDist + cyclePlatoon,
       emptyDist: prev.emptyDist + cycleEmpty,
-      // 累積等待時間 = 總排隊人數 * 時間步長
       totalWaitTime: prev.totalWaitTime + (currentStations.reduce((acc, s) => acc + s.queue, 0) * 0.5)
     }));
 
-    // 8. 定期更新歷史圖表 (每 5 分鐘採樣一次)
+    // 9. 定期更新歷史圖表 (每 5 分鐘採樣一次)
     if (Math.floor(newTime) % 5 === 0) {
       const avgSoC = nextVehicles.reduce((acc, v) => acc + v.battery, 0) / nextVehicles.length;
+      // 🔥 使用 Ref 的值來更新圖表 (絕對不會是 0)
       setStatsHistory(prev => {
         const newData = [
           ...prev,
           {
             time: formatTime(newTime),
             avgSoC: Math.round(avgSoC),
-            energy: Math.round(metrics.totalEnergy + cycleEnergy)
+            // 這裡讀取 Ref，絕對不會是 0
+            energy: Number(energyAccumulatorRef.current.total.toFixed(2)),
+            baseline: Number(energyAccumulatorRef.current.baseline.toFixed(2))
           }
         ];
         return newData.slice(-40); // 只保留最近 40 筆，避免圖表過擠
@@ -1066,24 +1122,72 @@ const KinmenMapSim = ({ onSimulationUpdate, isRunningExternal }) => {
         
         {/* 左側地圖區塊 */}
         <div style={styles.mapSection} className="eco-map-section">
-          
-          {/* 金門背景 (SVG) */}
-          <svg width="100%" height="100%" viewBox={`0 0 ${LOGICAL_WIDTH} ${LOGICAL_HEIGHT}`} preserveAspectRatio="none" style={{ position: 'absolute', opacity: 0.2 }}>
-             <path d="M 80 200 Q 200 100 350 150 T 600 50 L 750 100 L 780 200 Q 700 300 650 250 T 450 350 L 400 450 L 150 480 L 50 350 Z" fill="#0f766e" />
-             <circle cx="50" cy="250" r="30" fill="#0f766e" />
+          {/* 🔥 新增：內嵌 CSS 動畫樣式，讓路線流動 */}
+          <style>
+            {`
+              @keyframes dash-flow {
+                to { stroke-dashoffset: -24; }
+              }
+              @keyframes island-pulse {
+                0% { opacity: 0.3; filter: drop-shadow(0 0 5px #0f766e); }
+                50% { opacity: 0.5; filter: drop-shadow(0 0 15px #2dd4bf); }
+                100% { opacity: 0.3; filter: drop-shadow(0 0 5px #0f766e); }
+              }
+              .road-flow {
+                animation: dash-flow 1s linear infinite;
+              }
+              .island-glow {
+                animation: island-pulse 4s ease-in-out infinite;
+              }
+            `}
+          </style>
+
+          {/* 第一層 SVG：金門底圖 (全息投影風格) */}
+          <svg width="100%" height="100%" viewBox={`0 0 ${LOGICAL_WIDTH} ${LOGICAL_HEIGHT}`} preserveAspectRatio="none" style={{position: 'absolute'}}>
+             <defs>
+               {/* 定義漸層色：讓島嶼有立體感 */}
+               <linearGradient id="islandGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+                 <stop offset="0%" stopColor="#0f766e" stopOpacity="0.4" />
+                 <stop offset="100%" stopColor="#115e59" stopOpacity="0.1" />
+               </linearGradient>
+               {/* 網格圖案：增加科技感 */}
+               <pattern id="gridPattern" width="20" height="20" patternUnits="userSpaceOnUse">
+                 <path d="M 20 0 L 0 0 0 20" fill="none" stroke="rgba(45, 212, 191, 0.1)" strokeWidth="0.5"/>
+               </pattern>
+             </defs>
+
+             {/* 島嶼本體：套用漸層 + 呼吸燈動畫 */}
+             <path
+               className="island-glow"
+               d="M 80 200 Q 200 100 350 150 T 600 50 L 750 100 L 780 200 Q 700 300 650 250 T 450 350 L 400 450 L 150 480 L 50 350 Z"
+               fill="url(#islandGradient)"
+               stroke="#2dd4bf"
+               strokeWidth="1"
+               strokeOpacity="0.3"
+             />
+             {/* 疊加一層網格 */}
+             <path
+               d="M 80 200 Q 200 100 350 150 T 600 50 L 750 100 L 780 200 Q 700 300 650 250 T 450 350 L 400 450 L 150 480 L 50 350 Z"
+               fill="url(#gridPattern)"
+             />
+             {/* 小島裝飾 */}
+             <circle cx="50" cy="250" r="30" fill="url(#islandGradient)" stroke="#2dd4bf" strokeWidth="0.5" strokeOpacity="0.3" className="island-glow" />
           </svg>
 
-          {/* 路線軌跡 (動態流動) */}
-          <svg width="100%" height="100%" viewBox={`0 0 ${LOGICAL_WIDTH} ${LOGICAL_HEIGHT}`} preserveAspectRatio="none" style={{ position: 'absolute' }}>
-            <path d={ROAD_PATH_SVG} fill="none" stroke="#475569" strokeWidth="4" strokeOpacity="0.3" strokeLinecap="round" />
-            <path 
-              className="road-flow" 
-              d={ROAD_PATH_SVG} 
-              fill="none" 
-              stroke="#94a3b8" 
-              strokeWidth="2" 
-              strokeDasharray="6 6" 
-              strokeOpacity="0.6" 
+          {/* 第二層 SVG：路線 (動態流動) */}
+          <svg width="100%" height="100%" viewBox={`0 0 ${LOGICAL_WIDTH} ${LOGICAL_HEIGHT}`} preserveAspectRatio="none" style={{position: 'absolute'}}>
+            {/* 路線光暈 (底層發光) */}
+            <path d={ROAD_PATH_SVG} fill="none" stroke="#38bdf8" strokeWidth="4" strokeOpacity="0.1" strokeLinecap="round" />
+
+            {/* 實際路線 (虛線 + 動畫) */}
+            <path
+              className="road-flow"
+              d={ROAD_PATH_SVG}
+              fill="none"
+              stroke="#94a3b8"
+              strokeWidth="2"
+              strokeDasharray="6 6"
+              strokeOpacity="0.6"
             />
           </svg>
 
@@ -1127,39 +1231,94 @@ const KinmenMapSim = ({ onSimulationUpdate, isRunningExternal }) => {
             );
           })}
 
-          {/* 渲染車輛 */}
+          {/* ✅ 第二階段：加上車號與詳細數據標籤 */}
           {vehicles.map(v => {
+            // 決定顏色邏輯
             const isCharging = v.status === 'charging';
-            
-            // 🔥 黃色蛋形充電樣式 vs 一般巴士樣式
-            const vehicleBodyStyle = {
-              width: isCharging ? '32px' : '36px', 
-              height: isCharging ? '40px' : '36px', 
-              borderRadius: isCharging ? '999px' : '8px', 
-              backgroundColor: isCharging ? '#fbbf24' : (v.platooning ? '#065f46' : (mode === 'baseline' ? '#64748b' : '#1e40af')), 
-              border: selectedVehicleId === v.id ? '2px solid #ffffff' : `2px solid ${isCharging ? '#f59e0b' : (v.platooning ? '#4ade80' : '#3b82f6')}`, 
-              display: 'flex', justifyContent: 'center', alignItems: 'center', 
-              color: isCharging ? '#78350f' : 'white', 
-              fontWeight: 'bold', fontSize: '12px', 
-              boxShadow: isCharging ? '0 0 15px rgba(251, 191, 36, 0.8)' : '0 4px 10px rgba(0,0,0,0.5)',
-              transition: 'all 0.3s ease'
-            };
+            const mainColor = isCharging ? '#f59e0b' : (v.platooning ? '#10b981' : '#3b82f6');
+            const batteryColor = v.battery < 20 ? '#ef4444' : (v.battery > 80 ? '#4ade80' : '#e2e8f0');
 
             return (
-              <div key={v.id} onClick={(e) => { e.stopPropagation(); setSelectedVehicleId(v.id); }}
-                 style={{...styles.vehicleMarker, left: `${(v.x / LOGICAL_WIDTH) * 100}%`, top: `${(v.y / LOGICAL_HEIGHT) * 100}%`, transform: `translate(-50%, -50%) scale(${selectedVehicleId === v.id ? 1.3 : 1})`, zIndex: selectedVehicleId === v.id ? 100 : 20}}>
-                 
-                 <div style={vehicleBodyStyle}>
-                   {isCharging ? <Zap size={18} className="animate-pulse" /> : v.id}
-                   
-                   {/* 組隊標記 */}
-                   {v.platooning && <Wind size={14} style={{position: 'absolute', right: '-6px', top: '-6px', color: '#4ade80', backgroundColor: '#064e3b', borderRadius: '50%', padding: '1px'}} />}
-                 </div>
-                 
-                 {/* 電量條 */}
-                 <div style={{width: '36px', height: '4px', backgroundColor: '#334155', marginTop: '2px', borderRadius: '2px'}}>
-                   <div style={{width: `${v.battery}%`, height: '100%', backgroundColor: v.battery < 20 ? '#ef4444' : '#22c55e'}} />
-                 </div>
+              <div
+                key={v.id}
+                onClick={(e) => { e.stopPropagation(); setSelectedVehicleId(v.id); }}
+                style={{
+                  ...styles.vehicleMarker,
+                  left: `${(v.x / LOGICAL_WIDTH) * 100}%`,
+                  top: `${(v.y / LOGICAL_HEIGHT) * 100}%`,
+                  transform: `translate(-50%, -50%) scale(${selectedVehicleId === v.id ? 1.1 : 1})`,
+                  zIndex: selectedVehicleId === v.id ? 100 : 20,
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  gap: '2px', // 讓元件之間有一點點空隙
+                  transition: 'all 0.1s linear' // 讓移動更滑順
+                }}
+              >
+                {/* 1. 頭頂車號 (Badge) */}
+                <div style={{
+                  backgroundColor: 'rgba(15, 23, 42, 0.8)', // 深色半透明背景
+                  color: '#e2e8f0',
+                  padding: '1px 6px',
+                  borderRadius: '10px',
+                  fontSize: '10px',
+                  fontWeight: 'bold',
+                  whiteSpace: 'nowrap',
+                  boxShadow: '0 2px 4px rgba(0,0,0,0.5)',
+                  marginBottom: '2px'
+                }}>
+                  #{v.id}
+                </div>
+
+                {/* 2. 巴士主體 (維持上一階段的設計) */}
+                <div style={{
+                    position: 'relative',
+                    padding: '6px',
+                    borderRadius: '12px',
+                    backgroundColor: mainColor,
+                    boxShadow: `0 0 15px ${mainColor}80`, // 讓光暈更明顯一點
+                    border: selectedVehicleId === v.id ? '2px solid white' : '1px solid rgba(255,255,255,0.2)',
+                }}>
+                    {/* 如果是充電中，顯示閃電圖示，否則顯示巴士 */}
+                    {isCharging ? <Zap size={20} color="white" fill="white" /> : <BusFront size={20} color="white" strokeWidth={2} />}
+
+                    {/* 組隊標記 */}
+                    {v.platooning && (
+                       <div style={{position: 'absolute', top: -4, right: -4, backgroundColor: '#064e3b', borderRadius: '50%', padding: '2px', border: '1px solid #10b981'}}>
+                         <Wind size={10} color="#10b981" />
+                       </div>
+                    )}
+                </div>
+
+                {/* 3. 腳下資訊列 (新功能！) */}
+                <div style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  backgroundColor: 'rgba(15, 23, 42, 0.9)', // 深黑背景
+                  padding: '2px 6px',
+                  borderRadius: '6px',
+                  marginTop: '2px',
+                  border: '1px solid #334155',
+                  boxShadow: '0 2px 5px rgba(0,0,0,0.5)'
+                }}>
+                  {/* 載客數 */}
+                  <div style={{display: 'flex', alignItems: 'center', gap: '2px'}}>
+                    <Users size={10} color="#94a3b8" />
+                    <span style={{fontSize: '9px', fontWeight: 'bold', color: '#f1f5f9'}}>{Math.round(v.passengers)}</span>
+                  </div>
+
+                  {/* 分隔線 */}
+                  <div style={{width: '1px', height: '8px', backgroundColor: '#475569'}}></div>
+
+                  {/* 電量 */}
+                  <div style={{display: 'flex', alignItems: 'center', gap: '2px'}}>
+                    {/* 根據狀態顯示不同電池圖示 */}
+                    {isCharging ? <BatteryCharging size={10} color="#fbbf24" /> : <Battery size={10} color={batteryColor} />}
+                    <span style={{fontSize: '9px', fontWeight: 'bold', color: batteryColor}}>{Math.round(v.battery)}%</span>
+                  </div>
+                </div>
+
               </div>
             );
           })}
@@ -1186,24 +1345,51 @@ const KinmenMapSim = ({ onSimulationUpdate, isRunningExternal }) => {
           
           <div style={styles.card}>
              <h3 style={{fontSize: '0.9rem', color: '#94a3b8', margin: '0 0 10px 0', display: 'flex', alignItems: 'center', gap: '8px'}}>
-               <BarChart3 size={16} /> 能耗趨勢
+               <BarChart3 size={16} /> 能耗趨勢對比
              </h3>
              <div style={styles.chartWrapper}>
                 {statsHistory.length > 0 ? (
                   <ResponsiveContainer width="100%" height="100%">
                     <AreaChart data={statsHistory}>
-                      <defs><linearGradient id="colorEnergy" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="#3b82f6" stopOpacity={0.3}/><stop offset="95%" stopColor="#3b82f6" stopOpacity={0}/></linearGradient></defs>
+                      <defs>
+                        <linearGradient id="colorEnergy" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="5%" stopColor="#10b981" stopOpacity={0.3}/>
+                            <stop offset="95%" stopColor="#10b981" stopOpacity={0}/>
+                        </linearGradient>
+                      </defs>
                       <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
                       <XAxis dataKey="time" hide />
-                      <YAxis yAxisId="left" stroke="#94a3b8" fontSize={10} />
-                      <YAxis yAxisId="right" orientation="right" stroke="#94a3b8" fontSize={10} />
+                      <YAxis yAxisId="left" stroke="#94a3b8" fontSize={10} label={{ value: 'kWh', angle: -90, position: 'insideLeft', fill: '#94a3b8' }}/>
                       <Tooltip contentStyle={{backgroundColor: '#1e293b', borderColor: '#334155', color: '#f1f5f9'}} />
-                      <Legend wrapperStyle={{fontSize: '10px'}} />
-                      <Area yAxisId="left" type="monotone" dataKey="avgSoC" stroke="#4ade80" fill="url(#colorEnergy)" name="平均電量 %" />
-                      <Line yAxisId="right" type="monotone" dataKey="energy" stroke="#f87171" dot={false} name="總耗能 kWh" />
+                      <Legend verticalAlign="top" height={36} iconType="circle"/>
+
+                      {/* 🔴 Baseline (對照組)：紅色虛線，代表「如果不優化會耗多少電」 */}
+                      <Line
+                        yAxisId="left"
+                        type="monotone"
+                        dataKey="baseline"
+                        name="Baseline (無優化)"
+                        stroke="#ef4444"
+                        strokeWidth={2}
+                        strokeDasharray="5 5"
+                        dot={false}
+                        isAnimationActive={false}
+                      />
+
+                      {/* 🟢 RL Agent (實驗組)：綠色實線區域，代表「實際耗電」 */}
+                      <Area
+                        yAxisId="left"
+                        type="monotone"
+                        dataKey="energy"
+                        name="RL Agent (本系統)"
+                        stroke="#10b981"
+                        fill="url(#colorEnergy)"
+                        strokeWidth={3}
+                        isAnimationActive={false}
+                      />
                     </AreaChart>
                   </ResponsiveContainer>
-                ) : (<div style={{height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#475569', fontSize: '0.8rem'}}>等待模擬數據...</div>)}
+                ) : (<div style={{height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#475569', fontSize: '0.8rem'}}>等待數據...</div>)}
              </div>
           </div>
 
