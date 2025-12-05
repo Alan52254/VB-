@@ -4,6 +4,7 @@ import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContai
 import {
   Activity, BatteryCharging, Wind, Users, Cpu, Zap, MapPin, RotateCcw, ShieldCheck, Clock, Layers, Car, Leaf, Smartphone, TrendingDown
 } from 'lucide-react';
+import AIChatWidget from './AIChatWidget'; // 👈 新增這行
 
 // --- 參數設定 ---
 const ZONES = ["金城車站", "山外車站", "水頭碼頭", "金門機場", "古寧頭", "太武山"];
@@ -374,6 +375,8 @@ const DashboardMonitor = ({ externalData }) => {
           </div> */}
         </div>
       </main>
+      {/* 🤖 新增：AI 聊天機器人 (浮動在右下角) */}
+      <AIChatWidget externalData={externalData} />
     </div>
   );
 };
