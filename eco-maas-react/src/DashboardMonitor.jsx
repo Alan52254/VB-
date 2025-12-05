@@ -32,7 +32,7 @@ const DashboardMonitor = ({ externalData }) => {
   // --- 核心邏輯：接收外部數據 ---
   useEffect(() => {
     if (!externalData) return;
-    const { vehicles, gameTime, metrics } = externalData;
+    const { vehicles, gameTime, metrics, logs } = externalData; // 🔥 接收 logs
 
     const currentStep = Math.floor(gameTime);
     setStep(currentStep);
@@ -97,6 +97,11 @@ const DashboardMonitor = ({ externalData }) => {
         carpoolRatio: (1 + totalPassengers / vehicles.length).toFixed(2),
         greenEnergyUsage: gridInfo.solar.toFixed(1)
       });
+    }
+
+    // 🔥 同步日誌 (如果外部有傳 logs 進來)
+    if (logs) {
+      setAgentLogs(logs);
     }
   }, [externalData]);
 
@@ -315,13 +320,41 @@ const DashboardMonitor = ({ externalData }) => {
             </div>
           </div>
 
-          <div className="bg-slate-950 p-4 rounded-xl border border-slate-800 flex-1 flex flex-col font-mono h-[200px]">
-            <h3 className="flex items-center gap-2 text-sm font-semibold text-slate-300 mb-2 border-b border-slate-800 pb-2"><Terminal size={16} /> Agent 決策日誌</h3>
-            <div className="flex-1 overflow-y-auto space-y-1 pr-2 text-xs">
-              {agentLogs.length === 0 && <div className="text-slate-600 italic">等待決策數據...</div>}
-              {agentLogs.map((log) => (
-                <div key={log.id} className="flex gap-2"><span>{log.action}</span></div>
-              ))}
+          <div className="bg-[#1e293b] p-4 rounded-2xl border border-slate-700/50 flex-1 flex flex-col min-h-[200px]">
+            <h3 className="flex items-center gap-2 text-xs font-bold text-slate-400 mb-2 uppercase tracking-wider border-b border-slate-700 pb-2">
+              <Terminal size={14} /> AI 決策串流
+            </h3>
+            <div className="flex-1 overflow-y-auto pr-2 font-mono text-xs space-y-2">
+              {agentLogs.length === 0 && <div className="text-slate-600 italic text-center mt-4">等待決策數據...</div>}
+
+              {agentLogs.map((log) => {
+                // 根據類別決定顏色
+                let borderColor = 'border-slate-600';
+                let textColor = 'text-slate-300';
+                let prefix = 'SYS';
+
+                if (log.category === 'AI') {
+                  borderColor = 'border-purple-500';
+                  textColor = 'text-purple-300';
+                  prefix = 'RL-AGENT';
+                } else if (log.category === 'WARN') {
+                  borderColor = 'border-yellow-500';
+                  textColor = 'text-yellow-300';
+                  prefix = 'ALERT';
+                }
+
+                return (
+                  <div key={log.id} className={`border-l-2 ${borderColor} pl-2 py-1 bg-slate-800/30 rounded-r-md`}>
+                    <div className="flex justify-between items-center mb-0.5">
+                      <span className={`font-bold ${textColor} text-[10px]`}>{prefix}</span>
+                      <span className="text-[9px] text-slate-500">{log.time}</span>
+                    </div>
+                    <div className="text-slate-300 leading-tight">
+                      {log.message}
+                    </div>
+                  </div>
+                );
+              })}
               <div ref={logEndRef} />
             </div>
           </div>

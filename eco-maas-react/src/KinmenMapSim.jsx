@@ -487,15 +487,15 @@ const KinmenMapSim = ({ onSimulationUpdate, isRunningExternal }) => {
   // 由於 setInterval 閉包會鎖住初始 state，導致 updateGameLogic 讀不到最新數據。
   // 我們使用 useRef (latestDataRef) 來儲存最新的 State Snapshot。
   // 每次 render 時透過 useEffect 更新 Ref，Game Loop 再從 Ref 讀取最新值。
-  const latestDataRef = useRef({ vehicles: [], gameTime: 0, metrics: {}, stations: [], mode: 'rl' });
+  const latestDataRef = useRef({ vehicles: [], gameTime: 0, metrics: {}, stations: [], mode: 'rl', logs: [] });
 
   // ⚡ 新增：專門用來解決「閉包陷阱」的能耗累加器
   const energyAccumulatorRef = useRef({ total: 0, baseline: 0 });
 
   // 監聽 State 變化，同步更新 Ref
   useEffect(() => {
-    latestDataRef.current = { vehicles, gameTime, metrics, stations, mode };
-  }, [vehicles, gameTime, metrics, stations, mode]);
+    latestDataRef.current = { vehicles, gameTime, metrics, stations, mode, logs }; // 🔥 把 logs 加進去
+  }, [vehicles, gameTime, metrics, stations, mode, logs]);
 
   // --- 3.3 初始化 (Initialization) ---
   // 元件掛載時，執行一次重置
@@ -566,7 +566,8 @@ const KinmenMapSim = ({ onSimulationUpdate, isRunningExternal }) => {
         vehicles: mappedVehicles,
         stations: mappedStations,
         gameTime,
-        metrics
+        metrics,
+        logs: latestDataRef.current.logs // 🔥 傳送日誌給父層
       });
     }, 1000); // 1Hz 更新頻率
 
@@ -642,12 +643,20 @@ const KinmenMapSim = ({ onSimulationUpdate, isRunningExternal }) => {
     setSelectedVehicleId(null);
     setActiveSpot(getLoc('depot')); // 預設顯示總站卡片
 
-    addLog("System", "系統初始化完成。RL Agent 準備就緒。");
+    addLog("SYSTEM", "系統初始化完成。RL Agent 準備就緒。");
   };
 
-  // 輔助函式：寫入日誌
-  const addLog = (source, msg) => {
-    setLogs(prev => [`[${formatTime(gameTime)}] ${source}: ${msg}`, ...prev.slice(0, 5)]);
+  // 輔助函式：寫入日誌（結構化版本）
+  const addLog = (category, msg) => {
+    const timeStr = formatTime(latestDataRef.current.gameTime); // 確保拿到最新時間
+    const newLog = {
+      id: Date.now() + Math.random(), // 簡單的 unique id
+      time: timeStr,
+      category: category, // 'SYSTEM', 'AI', 'WARN'
+      message: msg
+    };
+
+    setLogs(prev => [newLog, ...prev].slice(0, 10)); // 只保留最近 10 筆
   };
 
   // 輔助函式：格式化時間 (分鐘 -> HH:MM)
@@ -805,7 +814,10 @@ const KinmenMapSim = ({ onSimulationUpdate, isRunningExternal }) => {
         battery += 0.8; // 充電速度 (每 tick +0.8%)
         if (battery >= 95) {
           status = 'moving';
-          logBuffer.push(`Bus #${v.id}: 充電完成。`);
+          logBuffer.push({
+            category: 'SYSTEM',
+            msg: `[Bus #${v.id}] 充電完成 (SoC: 95%) -> 恢復服務`
+          });
         }
         // 充電時車輛靜止，顯示充電中
         return { ...nextV, battery, speed: 0, power: -50, status, aiState: 'CHARGING' };
@@ -829,12 +841,22 @@ const KinmenMapSim = ({ onSimulationUpdate, isRunningExternal }) => {
 
       // 1. 判断是否组队 (Platooning Logic)
       let isPlatooning = false;
+      let platoonPartner = null;
       if (currentMode === 'rl') { // 只有 RL 模式才启用组队功能
-        isPlatooning = currentVehicles.some(other =>
+        platoonPartner = currentVehicles.find(other =>
           other.id !== v.id &&
           calcDist({ x, y }, other) < PLATOON_DISTANCE && // 距离小于阈值
           calcDist({ x, y }, other) > 5 // 避免重叠
         );
+        isPlatooning = platoonPartner !== undefined;
+
+        // 🔥 只在組隊狀態「剛發生」時記錄一次 (避免每個 tick 都寫 log)
+        if (isPlatooning && !v.platooning && Math.random() < 0.05) { // 5% 機率記錄
+          logBuffer.push({
+            category: 'AI',
+            msg: `[Bus #${v.id}] 偵測到鄰近車輛 -> 啟動編隊行駛 (節能: 60%)`
+          });
+        }
       }
 
       // 2. 共同参数
@@ -878,7 +900,11 @@ const KinmenMapSim = ({ onSimulationUpdate, isRunningExternal }) => {
         // 如果在總站且低電量 -> 強制充電
         if (stopId === 'depot' && battery < 30 && currentMode === 'rl') {
           status = 'charging';
-          logBuffer.push(`AI Agent: 指令 Bus #${v.id} 返站充電。`);
+          // 🔥 更專業的 AI 術語
+          logBuffer.push({
+            category: 'AI',
+            msg: `[Bus #${v.id}] SoC低於閾值 (30%) -> 執行返站充電策略 (Reward: +15)`
+          });
           passengers = 0; // 清客
         } else {
           // 1. 下車邏輯 (Alighting)
@@ -897,8 +923,25 @@ const KinmenMapSim = ({ onSimulationUpdate, isRunningExternal }) => {
 
             // 記錄要更新的站點 (稍後批量更新)
             stationUpdates[stopId] = (stationUpdates[stopId] || 0) + currentBoarded;
+
+            // 🔥 只在高需求站點記錄 (避免刷屏)
+            if (currentBoarded >= 3 && Math.random() < 0.1) { // 10% 機率記錄
+              const stationName = station.name || stopId;
+              logBuffer.push({
+                category: 'AI',
+                msg: `[Bus #${v.id}] 在 ${stationName} 接載 ${currentBoarded} 人 (載客率: ${Math.round((passengers / v.capacity) * 100)}%)`
+              });
+            }
           }
         }
+      }
+
+      // 🔥 警告日誌：電量危急
+      if (battery < 15 && battery > 5 && Math.random() < 0.02) { // 2% 機率記錄警告
+        logBuffer.push({
+          category: 'WARN',
+          msg: `[Bus #${v.id}] 電量危急 (${Math.round(battery)}%) - 建議立即返站`
+        });
       }
 
       return {
@@ -924,7 +967,11 @@ const KinmenMapSim = ({ onSimulationUpdate, isRunningExternal }) => {
 
     // 5. 處理累積的日誌
     if (logBuffer.length > 0) {
-      logBuffer.forEach(msg => addLog("System", msg));
+      logBuffer.forEach(item => {
+        // 兼容舊代碼：如果 item 是字串，就當 SYSTEM；如果是物件，就讀取屬性
+        if (typeof item === 'string') addLog('SYSTEM', item);
+        else addLog(item.category, item.msg);
+      });
     }
 
     // 6. 批量更新站點排隊人數 (避免在迴圈中多次 setState)
@@ -993,9 +1040,9 @@ const KinmenMapSim = ({ onSimulationUpdate, isRunningExternal }) => {
         const summary = busiest
           .map(s => `${s.name} 等候 ${s.queue} 人，累計服務 ${(s.totalServed || 0)} 人`)
           .join(' / ');
-        addLog('Global', `站點擁擠概況：${summary}`);
+        addLog('SYSTEM', `站點擁擠概況：${summary}`);
       } else {
-        addLog('Global', '站點擁擠概況：目前各站候車量穩定。');
+        addLog('SYSTEM', '站點擁擠概況：目前各站候車量穩定。');
       }
     }
   };
@@ -1538,7 +1585,80 @@ const KinmenMapSim = ({ onSimulationUpdate, isRunningExternal }) => {
               <History size={16} /> 決策日誌
             </h3>
             <div style={styles.logBox}>
-              {logs.length === 0 ? <span style={{fontStyle: 'italic', opacity: 0.5}}>系統待命中...</span> : logs.map((l, i) => <div key={i} style={{marginBottom: '4px', borderBottom: '1px solid rgba(255,255,255,0.05)', paddingBottom: '2px'}}>{l}</div>)}
+              {logs.length === 0 ? (
+                <span style={{fontStyle: 'italic', opacity: 0.5}}>系統待命中...</span>
+              ) : (
+                logs.map((log) => {
+                  // 根據類別決定顏色和背景
+                  let categoryColor = '#64748b'; // 預設灰色
+                  let categoryBg = 'rgba(100, 116, 139, 0.15)';
+                  let categoryLabel = 'INFO';
+
+                  if (log.category === 'SYSTEM') {
+                    categoryColor = '#38bdf8'; // 青色
+                    categoryBg = 'rgba(56, 189, 248, 0.15)';
+                    categoryLabel = 'SYS';
+                  } else if (log.category === 'AI') {
+                    categoryColor = '#a78bfa'; // 紫色
+                    categoryBg = 'rgba(167, 139, 250, 0.15)';
+                    categoryLabel = 'AI';
+                  } else if (log.category === 'WARN') {
+                    categoryColor = '#fb923c'; // 橘色
+                    categoryBg = 'rgba(251, 146, 60, 0.15)';
+                    categoryLabel = 'WARN';
+                  }
+
+                  return (
+                    <div
+                      key={log.id}
+                      style={{
+                        marginBottom: '6px',
+                        borderBottom: '1px solid rgba(255,255,255,0.05)',
+                        paddingBottom: '6px',
+                        display: 'flex',
+                        gap: '8px',
+                        alignItems: 'flex-start'
+                      }}
+                    >
+                      {/* 時間標籤 */}
+                      <span style={{
+                        fontSize: '0.65rem',
+                        color: '#64748b',
+                        fontFamily: 'monospace',
+                        minWidth: '40px',
+                        flexShrink: 0
+                      }}>
+                        {log.time}
+                      </span>
+
+                      {/* 類別徽章 */}
+                      <span style={{
+                        fontSize: '0.6rem',
+                        color: categoryColor,
+                        backgroundColor: categoryBg,
+                        padding: '2px 6px',
+                        borderRadius: '3px',
+                        fontWeight: 'bold',
+                        minWidth: '40px',
+                        textAlign: 'center',
+                        flexShrink: 0
+                      }}>
+                        {categoryLabel}
+                      </span>
+
+                      {/* 訊息內容 */}
+                      <span style={{
+                        fontSize: '0.75rem',
+                        color: '#e2e8f0',
+                        flex: 1,
+                        lineHeight: '1.3'
+                      }}>
+                        {log.message}
+                      </span>
+                    </div>
+                  );
+                })
+              )}
             </div>
           </div>
         </div>
