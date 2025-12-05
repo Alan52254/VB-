@@ -61,7 +61,9 @@ import {
   Signal,           // 訊號/連線
   Leaf,             // 環保/ESG
   ToggleLeft,       // 切換開關 (未使用)
-  ToggleRight       // 切換開關 (未使用)
+  ToggleRight,      // 切換開關 (未使用)
+  Sun,              // 太陽 (白天/太陽能發電)
+  Moon              // 月亮 (夜晚/離峰充電)
 } from 'lucide-react';
 
 // --- 圖表庫 (Recharts) ---
@@ -1120,107 +1122,97 @@ const KinmenMapSim = ({ onSimulationUpdate, isRunningExternal }) => {
       {/* 主版面 */}
       <div style={styles.mainLayout} className="eco-main-layout">
         
-        {/* 左側地圖區塊 */}
         <div style={styles.mapSection} className="eco-map-section">
-          {/* 🔥 新增：內嵌 CSS 動畫樣式，讓路線流動 */}
+          {/* 1. 內嵌動畫 (保留路線流動效果，因為這個還是很有科技感) */}
           <style>
             {`
-              @keyframes dash-flow {
-                to { stroke-dashoffset: -24; }
-              }
+              @keyframes dash-flow { to { stroke-dashoffset: -24; } }
               @keyframes island-pulse {
                 0% { opacity: 0.3; filter: drop-shadow(0 0 5px #0f766e); }
                 50% { opacity: 0.5; filter: drop-shadow(0 0 15px #2dd4bf); }
                 100% { opacity: 0.3; filter: drop-shadow(0 0 5px #0f766e); }
               }
-              .road-flow {
-                animation: dash-flow 1s linear infinite;
-              }
-              .island-glow {
-                animation: island-pulse 4s ease-in-out infinite;
-              }
+              .road-flow { animation: dash-flow 1s linear infinite; }
+              .island-glow { animation: island-pulse 4s ease-in-out infinite; }
             `}
           </style>
 
-          {/* 第一層 SVG：金門底圖 (全息投影風格) */}
+          {/* 2. 地圖 SVG (保留原本的) */}
           <svg width="100%" height="100%" viewBox={`0 0 ${LOGICAL_WIDTH} ${LOGICAL_HEIGHT}`} preserveAspectRatio="none" style={{position: 'absolute'}}>
              <defs>
-               {/* 定義漸層色：讓島嶼有立體感 */}
                <linearGradient id="islandGradient" x1="0%" y1="0%" x2="100%" y2="100%">
                  <stop offset="0%" stopColor="#0f766e" stopOpacity="0.4" />
                  <stop offset="100%" stopColor="#115e59" stopOpacity="0.1" />
                </linearGradient>
-               {/* 網格圖案：增加科技感 */}
                <pattern id="gridPattern" width="20" height="20" patternUnits="userSpaceOnUse">
                  <path d="M 20 0 L 0 0 0 20" fill="none" stroke="rgba(45, 212, 191, 0.1)" strokeWidth="0.5"/>
                </pattern>
              </defs>
-
-             {/* 島嶼本體：套用漸層 + 呼吸燈動畫 */}
-             <path
-               className="island-glow"
-               d="M 80 200 Q 200 100 350 150 T 600 50 L 750 100 L 780 200 Q 700 300 650 250 T 450 350 L 400 450 L 150 480 L 50 350 Z"
-               fill="url(#islandGradient)"
-               stroke="#2dd4bf"
-               strokeWidth="1"
-               strokeOpacity="0.3"
-             />
-             {/* 疊加一層網格 */}
-             <path
-               d="M 80 200 Q 200 100 350 150 T 600 50 L 750 100 L 780 200 Q 700 300 650 250 T 450 350 L 400 450 L 150 480 L 50 350 Z"
-               fill="url(#gridPattern)"
-             />
-             {/* 小島裝飾 */}
+             <path className="island-glow" d="M 80 200 Q 200 100 350 150 T 600 50 L 750 100 L 780 200 Q 700 300 650 250 T 450 350 L 400 450 L 150 480 L 50 350 Z" fill="url(#islandGradient)" stroke="#2dd4bf" strokeWidth="1" strokeOpacity="0.3" />
+             <path d="M 80 200 Q 200 100 350 150 T 600 50 L 750 100 L 780 200 Q 700 300 650 250 T 450 350 L 400 450 L 150 480 L 50 350 Z" fill="url(#gridPattern)" />
              <circle cx="50" cy="250" r="30" fill="url(#islandGradient)" stroke="#2dd4bf" strokeWidth="0.5" strokeOpacity="0.3" className="island-glow" />
           </svg>
 
-          {/* 第二層 SVG：路線 (動態流動) */}
+          {/* 3. 路線 SVG (保留原本的) */}
           <svg width="100%" height="100%" viewBox={`0 0 ${LOGICAL_WIDTH} ${LOGICAL_HEIGHT}`} preserveAspectRatio="none" style={{position: 'absolute'}}>
-            {/* 路線光暈 (底層發光) */}
             <path d={ROAD_PATH_SVG} fill="none" stroke="#38bdf8" strokeWidth="4" strokeOpacity="0.1" strokeLinecap="round" />
-
-            {/* 實際路線 (虛線 + 動畫) */}
-            <path
-              className="road-flow"
-              d={ROAD_PATH_SVG}
-              fill="none"
-              stroke="#94a3b8"
-              strokeWidth="2"
-              strokeDasharray="6 6"
-              strokeOpacity="0.6"
-            />
+            <path className="road-flow" d={ROAD_PATH_SVG} fill="none" stroke="#94a3b8" strokeWidth="2" strokeDasharray="6 6" strokeOpacity="0.6" />
           </svg>
 
-          {/* 渲染站點 */}
+          {/* 🔥 4. 新增：固定在右上角的數位時鐘 (取代原本的太陽) */}
+          <div style={{
+            position: 'absolute',
+            top: '20px',
+            right: '20px',
+            backgroundColor: 'rgba(15, 23, 42, 0.8)', // 深色半透明背景
+            border: '1px solid #475569',
+            padding: '8px 16px',
+            borderRadius: '8px',
+            color: '#38bdf8', // 亮藍色字體
+            fontSize: '1.2rem',
+            fontFamily: 'monospace',
+            fontWeight: 'bold',
+            zIndex: 50,
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px',
+            boxShadow: '0 4px 10px rgba(0,0,0,0.5)'
+          }}>
+            {/* 根據時間顯示簡單的 Icon，但不移動 */}
+            {((gameTime / 60) % 24 >= 6 && (gameTime / 60) % 24 < 18) ? <Sun size={20} color="#facc15" /> : <Moon size={20} color="#e2e8f0" />}
+            <span>{formatTime(gameTime)}</span>
+          </div>
+
+          {/* 5. 渲染站點 (Stations) - 保持原本邏輯 */}
           {stations.map(s => {
             const config = STATION_CONFIG[s.id] || { icon: MapPin, color: '#cbd5e1' };
             const IconComponent = config.icon;
-            
+
             return (
-              <div key={s.id} 
+              <div key={s.id}
                 onClick={(e) => { e.stopPropagation(); setActiveSpot(getLoc(s.id)); }}
                 style={{
-                  position: 'absolute', 
-                  left: `${(s.x / LOGICAL_WIDTH) * 100}%`, 
-                  top: `${(s.y / LOGICAL_HEIGHT) * 100}%`, 
-                  transform: 'translate(-50%, -50%)', 
+                  position: 'absolute',
+                  left: `${(s.x / LOGICAL_WIDTH) * 100}%`,
+                  top: `${(s.y / LOGICAL_HEIGHT) * 100}%`,
+                  transform: 'translate(-50%, -50%)',
                   display: 'flex', flexDirection: 'column', alignItems: 'center', cursor: 'pointer', zIndex: 10
               }}>
                  {/* 站點圖示 */}
                  <div style={{
-                   width: '28px', height: '28px', borderRadius: '50%', 
-                   backgroundColor: '#1e293b', border: `2px solid ${config.color}`, 
+                   width: '28px', height: '28px', borderRadius: '50%',
+                   backgroundColor: '#1e293b', border: `2px solid ${config.color}`,
                    display: 'flex', justifyContent: 'center', alignItems: 'center',
                    boxShadow: '0 0 10px rgba(0,0,0,0.5)'
                  }}>
                    <IconComponent size={14} color={config.color} />
                  </div>
-                 
+
                  {/* 站名標籤 */}
                  <div style={{marginTop: '4px', fontSize: '10px', fontWeight: 'bold', backgroundColor: 'rgba(0,0,0,0.7)', padding: '2px 6px', borderRadius: '4px', whiteSpace: 'nowrap'}}>
                    {s.name}
                  </div>
-                 
+
                  {/* 排隊氣泡 */}
                  {s.type !== 'depot' && s.queue > 0 && (
                    <div style={{position: 'absolute', top: -5, right: -5, backgroundColor: '#ef4444', color: 'white', fontSize: '9px', fontWeight: 'bold', width: '16px', height: '16px', borderRadius: '50%', display: 'flex', justifyContent: 'center', alignItems: 'center', border: '1px solid #1e293b'}}>
@@ -1231,9 +1223,8 @@ const KinmenMapSim = ({ onSimulationUpdate, isRunningExternal }) => {
             );
           })}
 
-          {/* ✅ 第二階段：加上車號與詳細數據標籤 */}
+          {/* 6. 渲染車輛 (Vehicles) - 保持原本邏輯 */}
           {vehicles.map(v => {
-            // 決定顏色邏輯
             const isCharging = v.status === 'charging';
             const mainColor = isCharging ? '#f59e0b' : (v.platooning ? '#10b981' : '#3b82f6');
             const batteryColor = v.battery < 20 ? '#ef4444' : (v.battery > 80 ? '#4ade80' : '#e2e8f0');
@@ -1251,13 +1242,13 @@ const KinmenMapSim = ({ onSimulationUpdate, isRunningExternal }) => {
                   display: 'flex',
                   flexDirection: 'column',
                   alignItems: 'center',
-                  gap: '2px', // 讓元件之間有一點點空隙
-                  transition: 'all 0.1s linear' // 讓移動更滑順
+                  gap: '2px',
+                  transition: 'all 0.1s linear'
                 }}
               >
-                {/* 1. 頭頂車號 (Badge) */}
+                {/* 車號 */}
                 <div style={{
-                  backgroundColor: 'rgba(15, 23, 42, 0.8)', // 深色半透明背景
+                  backgroundColor: 'rgba(15, 23, 42, 0.8)',
                   color: '#e2e8f0',
                   padding: '1px 6px',
                   borderRadius: '10px',
@@ -1270,19 +1261,16 @@ const KinmenMapSim = ({ onSimulationUpdate, isRunningExternal }) => {
                   #{v.id}
                 </div>
 
-                {/* 2. 巴士主體 (維持上一階段的設計) */}
+                {/* 巴士本體 */}
                 <div style={{
                     position: 'relative',
                     padding: '6px',
                     borderRadius: '12px',
                     backgroundColor: mainColor,
-                    boxShadow: `0 0 15px ${mainColor}80`, // 讓光暈更明顯一點
+                    boxShadow: `0 0 15px ${mainColor}80`,
                     border: selectedVehicleId === v.id ? '2px solid white' : '1px solid rgba(255,255,255,0.2)',
                 }}>
-                    {/* 如果是充電中，顯示閃電圖示，否則顯示巴士 */}
                     {isCharging ? <Zap size={20} color="white" fill="white" /> : <BusFront size={20} color="white" strokeWidth={2} />}
-
-                    {/* 組隊標記 */}
                     {v.platooning && (
                        <div style={{position: 'absolute', top: -4, right: -4, backgroundColor: '#064e3b', borderRadius: '50%', padding: '2px', border: '1px solid #10b981'}}>
                          <Wind size={10} color="#10b981" />
@@ -1290,40 +1278,28 @@ const KinmenMapSim = ({ onSimulationUpdate, isRunningExternal }) => {
                     )}
                 </div>
 
-                {/* 3. 腳下資訊列 (新功能！) */}
+                {/* 資訊標籤 */}
                 <div style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '6px',
-                  backgroundColor: 'rgba(15, 23, 42, 0.9)', // 深黑背景
-                  padding: '2px 6px',
-                  borderRadius: '6px',
-                  marginTop: '2px',
-                  border: '1px solid #334155',
-                  boxShadow: '0 2px 5px rgba(0,0,0,0.5)'
+                  display: 'flex', alignItems: 'center', gap: '6px',
+                  backgroundColor: 'rgba(15, 23, 42, 0.9)',
+                  padding: '2px 6px', borderRadius: '6px', marginTop: '2px',
+                  border: '1px solid #334155', boxShadow: '0 2px 5px rgba(0,0,0,0.5)'
                 }}>
-                  {/* 載客數 */}
                   <div style={{display: 'flex', alignItems: 'center', gap: '2px'}}>
                     <Users size={10} color="#94a3b8" />
                     <span style={{fontSize: '9px', fontWeight: 'bold', color: '#f1f5f9'}}>{Math.round(v.passengers)}</span>
                   </div>
-
-                  {/* 分隔線 */}
                   <div style={{width: '1px', height: '8px', backgroundColor: '#475569'}}></div>
-
-                  {/* 電量 */}
                   <div style={{display: 'flex', alignItems: 'center', gap: '2px'}}>
-                    {/* 根據狀態顯示不同電池圖示 */}
                     {isCharging ? <BatteryCharging size={10} color="#fbbf24" /> : <Battery size={10} color={batteryColor} />}
                     <span style={{fontSize: '9px', fontWeight: 'bold', color: batteryColor}}>{Math.round(v.battery)}%</span>
                   </div>
                 </div>
-
               </div>
             );
           })}
 
-          {/* 景點特色卡片 */}
+          {/* 7. 景點卡片 (Spot Card) - 保持原本邏輯 */}
           {activeSpot && (
             <div style={styles.spotCard}>
               <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px'}}>
