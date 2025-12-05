@@ -1241,109 +1241,6 @@ const KinmenMapSim = ({ onSimulationUpdate, isRunningExternal }) => {
             <span>{formatTime(gameTime)}</span>
           </div>
 
-          {/* 🔥 新增：微電網監控儀表 (Smart Grid HUD) */}
-          {(() => {
-             // 👇 直接讀取 State，而不是重新計算
-             const { solar, load, price, status } = metrics.gridInfo || {
-               solar: 0,
-               load: 50,
-               price: 3.0,
-               status: 'NORMAL'
-             };
-
-             // 決定 UI 狀態（根據 status 欄位）
-             let statusColor = '#38bdf8'; // Blue (Normal)
-             let statusText = '供需平衡';
-             let Icon = Activity;
-
-             if (status === 'GREEN') { // 綠能多
-               statusColor = '#4ade80'; // Green
-               statusText = '綠能充沛';
-               Icon = Leaf;
-             } else if (status === 'PEAK') { // 負載高
-               statusColor = '#f87171'; // Red
-               statusText = '尖峰負載';
-               Icon = Zap;
-             }
-
-             return (
-               <div style={{
-                 position: 'absolute',
-                 top: '20px',
-                 left: '20px', // 左上角
-                 display: 'flex',
-                 flexDirection: 'column',
-                 gap: '8px',
-                 zIndex: 40
-               }}>
-                 {/* 主面板 */}
-                 <div style={{
-                   backgroundColor: 'rgba(15, 23, 42, 0.85)',
-                   backdropFilter: 'blur(8px)',
-                   border: `1px solid ${statusColor}`,
-                   borderRadius: '12px',
-                   padding: '12px',
-                   width: '180px',
-                   boxShadow: `0 4px 20px rgba(0,0,0,0.4), inset 0 0 20px ${statusColor}10`
-                 }}>
-                    {/* 標題列 */}
-                    <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px', borderBottom: '1px solid rgba(255,255,255,0.1)', paddingBottom: '4px'}}>
-                      <span style={{fontSize: '0.75rem', color: '#94a3b8', fontWeight: 'bold', letterSpacing: '1px'}}>MICROGRID</span>
-                      <Icon size={14} color={statusColor} className={statusColor === '#f87171' ? 'animate-pulse' : ''} />
-                    </div>
-
-                    {/* 核心數據 */}
-                    <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'end'}}>
-                       <div>
-                         <div style={{fontSize: '0.7rem', color: '#64748b'}}>即時電價</div>
-                         <div style={{fontSize: '1.2rem', fontWeight: 'bold', color: '#fbbf24', display: 'flex', alignItems: 'center'}}>
-                           <span style={{fontSize: '0.8rem', marginRight: '2px'}}>$</span>
-                           {price.toFixed(1)}
-                         </div>
-                       </div>
-                       <div style={{textAlign: 'right'}}>
-                         <div style={{fontSize: '0.7rem', color: '#64748b'}}>電網負載</div>
-                         <div style={{fontSize: '1.1rem', fontWeight: 'bold', color: statusColor}}>
-                           {Math.round(load)}%
-                         </div>
-                       </div>
-                    </div>
-
-                    {/* 狀態條 */}
-                    <div style={{marginTop: '8px', height: '4px', width: '100%', backgroundColor: '#334155', borderRadius: '2px', overflow: 'hidden'}}>
-                      <div style={{
-                        height: '100%',
-                        width: `${Math.min(100, load)}%`,
-                        backgroundColor: statusColor,
-                        transition: 'width 0.5s, background-color 0.5s'
-                      }} />
-                    </div>
-                    <div style={{marginTop: '4px', fontSize: '0.7rem', color: statusColor, textAlign: 'right', fontWeight: 'bold'}}>
-                      {statusText}
-                    </div>
-                 </div>
-
-                 {/* 附加：太陽能佔比 (如果是白天) */}
-                 {solar > 0.1 && (
-                   <div style={{
-                     backgroundColor: 'rgba(15, 23, 42, 0.8)',
-                     borderRadius: '8px',
-                     padding: '6px 12px',
-                     display: 'flex',
-                     alignItems: 'center',
-                     gap: '8px',
-                     borderLeft: '3px solid #facc15'
-                   }}>
-                     <Sun size={12} color="#facc15" />
-                     <span style={{fontSize: '0.75rem', color: '#e2e8f0'}}>
-                       PV Output: <span style={{color: '#facc15'}}>{Math.round(solar * 100)}%</span>
-                     </span>
-                   </div>
-                 )}
-               </div>
-             );
-          })()}
-
           {/* 5. 渲染站點 (Stations) - ⚡ 加入充電站指標 */}
           {stations.map(s => {
             const config = STATION_CONFIG[s.id] || { icon: MapPin, color: '#cbd5e1' };
@@ -1532,9 +1429,60 @@ const KinmenMapSim = ({ onSimulationUpdate, isRunningExternal }) => {
 
         {/* 右側面板 */}
         <div style={styles.sidePanel} className="eco-side-panel">
-          
+
           <div style={styles.card}>{renderSidePanelContent()}</div>
-          
+
+          {/* 🔥 搬家成功：微電網監控卡片 (Microgrid Card) */}
+          <div style={{...styles.card, padding: '12px'}}>
+             {(() => {
+                // 讀取 metrics 裡的電網數據 (如果還沒生成，給預設值)
+                const { solar, load, price, status } = metrics.gridInfo || { solar: 0, load: 50, price: 3.0, status: 'NORMAL' };
+
+                // UI 狀態判斷
+                let statusColor = '#38bdf8';
+                let statusText = '供需平衡';
+                let Icon = Activity;
+
+                if (status === 'GREEN') {
+                  statusColor = '#4ade80'; statusText = '綠能充沛'; Icon = Leaf;
+                } else if (status === 'PEAK') {
+                  statusColor = '#f87171'; statusText = '尖峰負載'; Icon = Zap;
+                }
+
+                return (
+                  <div>
+                    <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px'}}>
+                      <span style={{fontSize: '0.8rem', color: '#94a3b8', fontWeight: 'bold', display: 'flex', gap: '6px', alignItems: 'center'}}>
+                        <Zap size={14} /> 微電網狀態
+                      </span>
+                      <span style={{fontSize: '0.7rem', color: statusColor, border: `1px solid ${statusColor}`, padding: '2px 6px', borderRadius: '4px'}}>
+                        {statusText}
+                      </span>
+                    </div>
+
+                    <div style={{display: 'flex', justifyContent: 'space-between', marginBottom: '8px'}}>
+                       <div style={{textAlign: 'center', flex: 1, borderRight: '1px solid #334155'}}>
+                          <div style={{fontSize: '0.7rem', color: '#64748b'}}>即時電價</div>
+                          <div style={{fontSize: '1.2rem', fontWeight: 'bold', color: '#fbbf24'}}>${price.toFixed(1)}</div>
+                       </div>
+                       <div style={{textAlign: 'center', flex: 1}}>
+                          <div style={{fontSize: '0.7rem', color: '#64748b'}}>電網負載</div>
+                          <div style={{fontSize: '1.2rem', fontWeight: 'bold', color: statusColor}}>{Math.round(load)}%</div>
+                       </div>
+                    </div>
+
+                    {/* 太陽能發電佔比 (如果有太陽) */}
+                    {solar > 5 && (
+                      <div style={{marginTop: '8px', backgroundColor: 'rgba(250, 204, 21, 0.1)', padding: '6px', borderRadius: '6px', display: 'flex', justifyContent: 'center', gap: '6px', alignItems: 'center'}}>
+                         <Sun size={12} color="#facc15" />
+                         <span style={{fontSize: '0.75rem', color: '#facc15'}}>PV Output: {Math.round(solar)}%</span>
+                      </div>
+                    )}
+                  </div>
+                );
+             })()}
+          </div>
+
           <div style={styles.card}>
              <h3 style={{fontSize: '0.9rem', color: '#94a3b8', margin: '0 0 10px 0', display: 'flex', alignItems: 'center', gap: '8px'}}>
                <BarChart3 size={16} /> 能耗趨勢對比
