@@ -63,7 +63,9 @@ import {
   ToggleLeft,       // 切換開關 (未使用)
   ToggleRight,      // 切換開關 (未使用)
   Sun,              // 太陽 (白天/太陽能發電)
-  Moon              // 月亮 (夜晚/離峰充電)
+  Moon,             // 月亮 (夜晚/離峰充電)
+  DollarSign,       // 💰 電價 (動態定價)
+  Cloud             // ☁️ 陰天/一般狀態
 } from 'lucide-react';
 
 // --- 圖表庫 (Recharts) ---
@@ -215,13 +217,16 @@ const ZONE_MAPPING = {
  * 為每個站點指定專屬的 Lucide Icon 與顏色，增強地圖的可讀性與美觀度。
  */
 const STATION_CONFIG = {
-  'depot':     { icon: Warehouse, color: '#fbbf24', label: '總站' },
+  // 👇 1. 金城總站：主充電站 (樞紐)
+  'depot':     { icon: Warehouse, color: '#fbbf24', label: '總站', hasCharger: true },
   'juguang':   { icon: Flag,      color: '#f87171', label: '地標' },
   'zhaishan':  { icon: Anchor,    color: '#60a5fa', label: '坑道' },
   'chenggong': { icon: Castle,    color: '#f472b6', label: '洋樓' },
-  'airport':   { icon: Plane,     color: '#38bdf8', label: '機場' },
+  // 👇 2. 尚義機場：交通樞紐充電站
+  'airport':   { icon: Plane,     color: '#38bdf8', label: '機場', hasCharger: true },
   'taiwu':     { icon: Mountain,  color: '#4ade80', label: '登山' },
-  'shanhou':   { icon: Home,      color: '#fb923c', label: '聚落' },
+  // 👇 3. 山后民俗村：東半島充電節點 (平衡電網)
+  'shanhou':   { icon: Home,      color: '#fb923c', label: '聚落', hasCharger: true },
   'mashan':    { icon: Zap,       color: '#a78bfa', label: '觀測' },
   'guningtou': { icon: History,   color: '#94a3b8', label: '戰史' },
 };
@@ -621,7 +626,14 @@ const KinmenMapSim = ({ onSimulationUpdate, isRunningExternal }) => {
       totalDist: 0,
       platoonDist: 0,
       emptyDist: 0,
-      totalWaitTime: 0
+      totalWaitTime: 0,
+      // 🔥 新增：電網狀態資訊
+      gridInfo: {
+        solar: 0,    // 太陽能發電 (0-100%)
+        load: 50,    // 電網負載 (0-100%)
+        price: 2.5,  // 即時電價
+        status: 'NORMAL' // 狀態：GREEN, NORMAL, PEAK
+      }
     });
 
     // 🔥 加入這行：重置累加器
@@ -698,6 +710,40 @@ const KinmenMapSim = ({ onSimulationUpdate, isRunningExternal }) => {
     // 1. 時間推進
     const newTime = currentGameTime + 0.5; // 每個 tick 增加 0.5 分鐘
     setGameTime(newTime);
+
+    // --- ⚡ 微電網物理模型 (Microgrid Physics) ---
+    // 1. 計算太陽能發電強度 (Solar Intensity): 鐘型曲線，中午 12 點最強
+    const hourOfDay = (newTime / 60) % 24;
+    // 簡單模擬：6點~18點有太陽，強度用 Sin 波模擬
+    const solarOutput = (hourOfDay > 6 && hourOfDay < 18)
+      ? Math.sin(((hourOfDay - 6) / 12) * Math.PI) * 100 // 0 ~ 100%
+      : 0;
+
+    // 2. 計算基礎負載 (Base Load): 雙峰曲線 (早上上班、晚上回家)
+    // 使用兩個 Sin 波疊加模擬
+    const baseLoad = 50
+      + 20 * Math.sin(((hourOfDay - 8) / 24) * 2 * Math.PI) // 日間活動
+      + 30 * Math.exp(-Math.pow(hourOfDay - 19, 2) / 4);    // 晚間尖峰 (19:00)
+
+    // 3. 計算淨負載 (Net Load) = 需求 - 綠能
+    // 這會形成「鴨子曲線」：中午負載反而低
+    const netLoad = Math.max(20, baseLoad - (solarOutput * 0.6));
+
+    // 4. 動態定價 (Dynamic Pricing)
+    // 負載越高，電價越貴；綠能越多，電價越便宜
+    let gridPrice = 2.5; // 基礎電價
+    let gridStatusValue = 'NORMAL'; // 狀態：GREEN, NORMAL, PEAK
+
+    if (netLoad < 40) {
+      gridPrice = 1.8; // 綠能過剩，便宜！
+      gridStatusValue = 'GREEN';
+    } else if (netLoad > 80) {
+      gridPrice = 6.5; // 尖峰負載，超貴！
+      gridStatusValue = 'PEAK';
+    } else {
+      gridPrice = 3.0;
+      gridStatusValue = 'NORMAL';
+    }
 
     // --- 🛑 優化後的乘客生成邏輯 (Traffic Flow Control) ---
 
@@ -909,7 +955,14 @@ const KinmenMapSim = ({ onSimulationUpdate, isRunningExternal }) => {
       totalDist: prev.totalDist + cycleDist,
       platoonDist: prev.platoonDist + cyclePlatoon,
       emptyDist: prev.emptyDist + cycleEmpty,
-      totalWaitTime: prev.totalWaitTime + (currentStations.reduce((acc, s) => acc + s.queue, 0) * 0.5)
+      totalWaitTime: prev.totalWaitTime + (currentStations.reduce((acc, s) => acc + s.queue, 0) * 0.5),
+      // 👇 更新電網狀態資訊
+      gridInfo: {
+        solar: solarOutput,
+        load: netLoad,
+        price: gridPrice,
+        status: gridStatusValue
+      }
     }));
 
     // 9. 定期更新歷史圖表 (每 5 分鐘採樣一次)
@@ -1132,6 +1185,11 @@ const KinmenMapSim = ({ onSimulationUpdate, isRunningExternal }) => {
                 50% { opacity: 0.5; filter: drop-shadow(0 0 15px #2dd4bf); }
                 100% { opacity: 0.3; filter: drop-shadow(0 0 5px #0f766e); }
               }
+              @keyframes ping {
+                0% { transform: scale(1); opacity: 0.6; }
+                50% { transform: scale(1.3); opacity: 0.3; }
+                100% { transform: scale(1.5); opacity: 0; }
+              }
               .road-flow { animation: dash-flow 1s linear infinite; }
               .island-glow { animation: island-pulse 4s ease-in-out infinite; }
             `}
@@ -1183,10 +1241,114 @@ const KinmenMapSim = ({ onSimulationUpdate, isRunningExternal }) => {
             <span>{formatTime(gameTime)}</span>
           </div>
 
-          {/* 5. 渲染站點 (Stations) - 保持原本邏輯 */}
+          {/* 🔥 新增：微電網監控儀表 (Smart Grid HUD) */}
+          {(() => {
+             // 👇 直接讀取 State，而不是重新計算
+             const { solar, load, price, status } = metrics.gridInfo || {
+               solar: 0,
+               load: 50,
+               price: 3.0,
+               status: 'NORMAL'
+             };
+
+             // 決定 UI 狀態（根據 status 欄位）
+             let statusColor = '#38bdf8'; // Blue (Normal)
+             let statusText = '供需平衡';
+             let Icon = Activity;
+
+             if (status === 'GREEN') { // 綠能多
+               statusColor = '#4ade80'; // Green
+               statusText = '綠能充沛';
+               Icon = Leaf;
+             } else if (status === 'PEAK') { // 負載高
+               statusColor = '#f87171'; // Red
+               statusText = '尖峰負載';
+               Icon = Zap;
+             }
+
+             return (
+               <div style={{
+                 position: 'absolute',
+                 top: '20px',
+                 left: '20px', // 左上角
+                 display: 'flex',
+                 flexDirection: 'column',
+                 gap: '8px',
+                 zIndex: 40
+               }}>
+                 {/* 主面板 */}
+                 <div style={{
+                   backgroundColor: 'rgba(15, 23, 42, 0.85)',
+                   backdropFilter: 'blur(8px)',
+                   border: `1px solid ${statusColor}`,
+                   borderRadius: '12px',
+                   padding: '12px',
+                   width: '180px',
+                   boxShadow: `0 4px 20px rgba(0,0,0,0.4), inset 0 0 20px ${statusColor}10`
+                 }}>
+                    {/* 標題列 */}
+                    <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px', borderBottom: '1px solid rgba(255,255,255,0.1)', paddingBottom: '4px'}}>
+                      <span style={{fontSize: '0.75rem', color: '#94a3b8', fontWeight: 'bold', letterSpacing: '1px'}}>MICROGRID</span>
+                      <Icon size={14} color={statusColor} className={statusColor === '#f87171' ? 'animate-pulse' : ''} />
+                    </div>
+
+                    {/* 核心數據 */}
+                    <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'end'}}>
+                       <div>
+                         <div style={{fontSize: '0.7rem', color: '#64748b'}}>即時電價</div>
+                         <div style={{fontSize: '1.2rem', fontWeight: 'bold', color: '#fbbf24', display: 'flex', alignItems: 'center'}}>
+                           <span style={{fontSize: '0.8rem', marginRight: '2px'}}>$</span>
+                           {price.toFixed(1)}
+                         </div>
+                       </div>
+                       <div style={{textAlign: 'right'}}>
+                         <div style={{fontSize: '0.7rem', color: '#64748b'}}>電網負載</div>
+                         <div style={{fontSize: '1.1rem', fontWeight: 'bold', color: statusColor}}>
+                           {Math.round(load)}%
+                         </div>
+                       </div>
+                    </div>
+
+                    {/* 狀態條 */}
+                    <div style={{marginTop: '8px', height: '4px', width: '100%', backgroundColor: '#334155', borderRadius: '2px', overflow: 'hidden'}}>
+                      <div style={{
+                        height: '100%',
+                        width: `${Math.min(100, load)}%`,
+                        backgroundColor: statusColor,
+                        transition: 'width 0.5s, background-color 0.5s'
+                      }} />
+                    </div>
+                    <div style={{marginTop: '4px', fontSize: '0.7rem', color: statusColor, textAlign: 'right', fontWeight: 'bold'}}>
+                      {statusText}
+                    </div>
+                 </div>
+
+                 {/* 附加：太陽能佔比 (如果是白天) */}
+                 {solar > 0.1 && (
+                   <div style={{
+                     backgroundColor: 'rgba(15, 23, 42, 0.8)',
+                     borderRadius: '8px',
+                     padding: '6px 12px',
+                     display: 'flex',
+                     alignItems: 'center',
+                     gap: '8px',
+                     borderLeft: '3px solid #facc15'
+                   }}>
+                     <Sun size={12} color="#facc15" />
+                     <span style={{fontSize: '0.75rem', color: '#e2e8f0'}}>
+                       PV Output: <span style={{color: '#facc15'}}>{Math.round(solar * 100)}%</span>
+                     </span>
+                   </div>
+                 )}
+               </div>
+             );
+          })()}
+
+          {/* 5. 渲染站點 (Stations) - ⚡ 加入充電站指標 */}
           {stations.map(s => {
             const config = STATION_CONFIG[s.id] || { icon: MapPin, color: '#cbd5e1' };
             const IconComponent = config.icon;
+            const isCharger = config.hasCharger === true; // 👈 判斷是否為充電站
 
             return (
               <div key={s.id}
@@ -1198,24 +1360,78 @@ const KinmenMapSim = ({ onSimulationUpdate, isRunningExternal }) => {
                   transform: 'translate(-50%, -50%)',
                   display: 'flex', flexDirection: 'column', alignItems: 'center', cursor: 'pointer', zIndex: 10
               }}>
+                 {/* ⚡ 充電站專用：脈衝光暈 (呼吸燈效果) */}
+                 {isCharger && (
+                   <>
+                     <div style={{
+                       position: 'absolute',
+                       width: '40px', height: '40px',
+                       borderRadius: '50%',
+                       backgroundColor: '#facc15',
+                       opacity: 0.6,
+                       animation: 'ping 2s cubic-bezier(0, 0, 0.2, 1) infinite',
+                       pointerEvents: 'none'
+                     }} />
+                     <div style={{
+                       position: 'absolute',
+                       width: '40px', height: '40px',
+                       borderRadius: '50%',
+                       backgroundColor: '#facc15',
+                       opacity: 0.4,
+                       animation: 'ping 2s cubic-bezier(0, 0, 0.2, 1) infinite 1s',
+                       pointerEvents: 'none'
+                     }} />
+                   </>
+                 )}
+
                  {/* 站點圖示 */}
                  <div style={{
                    width: '28px', height: '28px', borderRadius: '50%',
-                   backgroundColor: '#1e293b', border: `2px solid ${config.color}`,
+                   backgroundColor: '#1e293b',
+                   border: `2px solid ${config.color}`,
                    display: 'flex', justifyContent: 'center', alignItems: 'center',
-                   boxShadow: '0 0 10px rgba(0,0,0,0.5)'
+                   boxShadow: isCharger ? '0 0 20px rgba(250, 204, 21, 0.6)' : '0 0 10px rgba(0,0,0,0.5)', // 👈 充電站加強發光
+                   position: 'relative',
+                   zIndex: 2
                  }}>
                    <IconComponent size={14} color={config.color} />
+
+                   {/* ⚡ 充電站專用：閃電小 Badge */}
+                   {isCharger && (
+                     <div style={{
+                       position: 'absolute',
+                       top: '-6px', right: '-6px',
+                       width: '14px', height: '14px',
+                       borderRadius: '50%',
+                       backgroundColor: '#facc15',
+                       border: '1.5px solid #1e293b',
+                       display: 'flex', justifyContent: 'center', alignItems: 'center',
+                       boxShadow: '0 0 8px rgba(250, 204, 21, 0.8)'
+                     }}>
+                       <Zap size={8} color="#1e293b" fill="#1e293b" />
+                     </div>
+                   )}
                  </div>
 
                  {/* 站名標籤 */}
-                 <div style={{marginTop: '4px', fontSize: '10px', fontWeight: 'bold', backgroundColor: 'rgba(0,0,0,0.7)', padding: '2px 6px', borderRadius: '4px', whiteSpace: 'nowrap'}}>
+                 <div style={{
+                   marginTop: '4px',
+                   fontSize: '10px',
+                   fontWeight: 'bold',
+                   backgroundColor: isCharger ? 'rgba(250, 204, 21, 0.2)' : 'rgba(0,0,0,0.7)', // 👈 充電站用黃色背景
+                   border: isCharger ? '1px solid rgba(250, 204, 21, 0.5)' : 'none',
+                   padding: '2px 6px',
+                   borderRadius: '4px',
+                   whiteSpace: 'nowrap',
+                   position: 'relative',
+                   zIndex: 2
+                 }}>
                    {s.name}
                  </div>
 
                  {/* 排隊氣泡 */}
                  {s.type !== 'depot' && s.queue > 0 && (
-                   <div style={{position: 'absolute', top: -5, right: -5, backgroundColor: '#ef4444', color: 'white', fontSize: '9px', fontWeight: 'bold', width: '16px', height: '16px', borderRadius: '50%', display: 'flex', justifyContent: 'center', alignItems: 'center', border: '1px solid #1e293b'}}>
+                   <div style={{position: 'absolute', top: -5, right: -5, backgroundColor: '#ef4444', color: 'white', fontSize: '9px', fontWeight: 'bold', width: '16px', height: '16px', borderRadius: '50%', display: 'flex', justifyContent: 'center', alignItems: 'center', border: '1px solid #1e293b', zIndex: 3}}>
                      {s.queue}
                    </div>
                  )}

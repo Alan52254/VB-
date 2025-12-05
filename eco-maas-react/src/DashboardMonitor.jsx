@@ -9,7 +9,6 @@ import {
 const ZONES = ["金城車站", "山外車站", "水頭碼頭", "金門機場", "古寧頭", "太武山"];
 const AGGREGATION_INTERVAL = 10;
 
-const randomInt = (min, max) => Math.floor(Math.random() * (max - min + 1) + min);
 const randomFloat = (min, max) => Math.random() * (max - min) + min;
 
 const DashboardMonitor = ({ externalData }) => {
@@ -56,36 +55,47 @@ const DashboardMonitor = ({ externalData }) => {
       });
     }
 
-    // 模擬環境風力
-    const windBase = 50 + 40 * Math.sin(currentStep * 0.1);
-    const currentWind = Math.max(0, Math.min(100, windBase + randomInt(-10, 10)));
-    let currentScenario = "中風能";
-    if (currentWind > 80) currentScenario = "高風能";
-    else if (currentWind < 30) currentScenario = "低風能";
-    setWindScenario(currentScenario);
+    // 🔥 接收來自 KinmenMapSim 的真實電網數據
+    if (metrics && metrics.gridInfo) {
+      // 更新風力場景（根據電網狀態）
+      let currentScenario = "供需平衡";
+      if (metrics.gridInfo.status === 'GREEN') currentScenario = "綠能充沛";
+      else if (metrics.gridInfo.status === 'PEAK') currentScenario = "尖峰負載";
+      setWindScenario(currentScenario);
 
-    // 模擬電網數據
-    if (currentStep % 2 === 0) {
-      const avgSoc = vehicles.reduce((acc, v) => acc + v.soc, 0) / (vehicles.length || 1);
-      setEnergyData(prev => {
-        const newData = [...prev, { time: currentStep, windSupply: currentWind.toFixed(1), fleetDemand: (vehicles.length * 2 - avgSoc * 0.5).toFixed(1), gridLoad: (60 + 20 * Math.sin(currentStep * 0.2)).toFixed(1) }];
-        if (newData.length > 30) return newData.slice(newData.length - 30);
-        return newData;
-      });
+      // 更新電網數據圖表（每 2 步更新一次以減少渲染）
+      if (currentStep % 2 === 0) {
+        setEnergyData(prev => {
+          const newData = [
+            ...prev,
+            {
+              time: currentStep,
+              // 太陽能發電 (對應原本的 windSupply)
+              windSupply: metrics.gridInfo.solar.toFixed(1),
+              // 電網負載
+              gridLoad: metrics.gridInfo.load.toFixed(1)
+            }
+          ];
+          // 保持最近 50 筆數據
+          if (newData.length > 50) return newData.slice(newData.length - 50);
+          return newData;
+        });
+      }
     }
 
     // 更新 KPI
     if (metrics && vehicles.length > 0) {
       const idleCount = vehicles.filter(v => v.status === 'Idle' || v.status !== 'Service').length;
       const totalPassengers = vehicles.reduce((acc, v) => acc + (v.passengers || 0), 0);
+      const gridInfo = metrics.gridInfo || { solar: 0, load: 50, status: 'NORMAL' };
 
       setKpiStats({
         avgWaitTime: metrics.totalWaitTime && metrics.totalServed > 0 ? (metrics.totalWaitTime / metrics.totalServed).toFixed(1) : '15.2',
         energySaving: metrics.platoonDist && metrics.totalDist > 0 ? ((metrics.platoonDist / metrics.totalDist) * 40).toFixed(1) : '0',
         emptyRate: ((idleCount / vehicles.length) * 100).toFixed(1),
-        gridBalanceScore: (80 + (currentWind > 80 ? 10 : 0) - (currentWind < 30 ? 5 : 0)).toFixed(0),
+        gridBalanceScore: (80 + (gridInfo.status === 'GREEN' ? 10 : 0) - (gridInfo.status === 'PEAK' ? 5 : 0)).toFixed(0),
         carpoolRatio: (1 + totalPassengers / vehicles.length).toFixed(2),
-        greenEnergyUsage: (currentWind * 0.6).toFixed(1)
+        greenEnergyUsage: gridInfo.solar.toFixed(1)
       });
     }
   }, [externalData]);
@@ -244,14 +254,14 @@ const DashboardMonitor = ({ externalData }) => {
           </div>
 
           <div className="bg-slate-900 p-4 rounded-xl border border-slate-800 h-[250px]">
-            <h3 className="flex items-center gap-2 text-sm font-semibold text-slate-300 mb-2"><Wind size={16} /> 微電網供需預測</h3>
+            <h3 className="flex items-center gap-2 text-sm font-semibold text-slate-300 mb-2"><Zap size={16} /> 微電網供需動態</h3>
             <div className="h-[200px] w-full">
               <ResponsiveContainer width="100%" height="100%">
                 <AreaChart data={energyData}>
                   <defs>
-                    <linearGradient id="colorWind" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#06b6d4" stopOpacity={0.3}/>
-                      <stop offset="95%" stopColor="#06b6d4" stopOpacity={0}/>
+                    <linearGradient id="colorSolar" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#facc15" stopOpacity={0.4}/>
+                      <stop offset="95%" stopColor="#facc15" stopOpacity={0}/>
                     </linearGradient>
                     <linearGradient id="colorLoad" x1="0" y1="0" x2="0" y2="1">
                       <stop offset="5%" stopColor="#f59e0b" stopOpacity={0.3}/>
@@ -259,11 +269,11 @@ const DashboardMonitor = ({ externalData }) => {
                     </linearGradient>
                   </defs>
                   <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
-                  <XAxis dataKey="time" stroke="#94a3b8" tick={{fontSize: 10}} />
-                  <YAxis stroke="#94a3b8" tick={{fontSize: 10}} />
+                  <XAxis dataKey="time" stroke="#94a3b8" tick={{fontSize: 10}} label={{ value: 'Time (min)', position: 'insideBottom', offset: -5, fill: '#64748b', fontSize: 10 }} />
+                  <YAxis stroke="#94a3b8" tick={{fontSize: 10}} label={{ value: '%', angle: -90, position: 'insideLeft', fill: '#64748b' }} />
                   <Tooltip contentStyle={{ backgroundColor: '#1e293b', borderColor: '#334155', fontSize: '12px' }} />
-                  <Area type="monotone" dataKey="windSupply" stroke="#06b6d4" fillOpacity={1} fill="url(#colorWind)" />
-                  <Area type="monotone" dataKey="gridLoad" stroke="#f59e0b" fillOpacity={1} fill="url(#colorLoad)" />
+                  <Area type="monotone" dataKey="windSupply" name="太陽能發電" stroke="#facc15" fillOpacity={1} fill="url(#colorSolar)" strokeWidth={2} />
+                  <Area type="monotone" dataKey="gridLoad" name="電網負載" stroke="#f59e0b" fillOpacity={1} fill="url(#colorLoad)" strokeWidth={2} />
                 </AreaChart>
               </ResponsiveContainer>
             </div>
