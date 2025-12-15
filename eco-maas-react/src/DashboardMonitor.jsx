@@ -5,6 +5,7 @@ import {
   Activity, BatteryCharging, Wind, Users, Cpu, Zap, MapPin, RotateCcw, ShieldCheck, Clock, Layers, Car, Leaf, Smartphone, TrendingDown
 } from 'lucide-react';
 import AIChatWidget from './AIChatWidget'; // 👈 新增這行
+import { useLanguage } from './i18n/LanguageContext'; // 🌐 引入 i18n Hook
 
 // --- 參數設定 ---
 const ZONES = ["金城車站", "山外車站", "水頭碼頭", "金門機場", "古寧頭", "太武山"];
@@ -13,6 +14,8 @@ const AGGREGATION_INTERVAL = 10;
 const randomFloat = (min, max) => Math.random() * (max - min) + min;
 
 const DashboardMonitor = ({ externalData }) => {
+  const { t } = useLanguage(); // 🌐 取得翻譯函式
+
   // --- State ---
   const [step, setStep] = useState(0);
   const [globalEpoch, setGlobalEpoch] = useState(0);
@@ -22,7 +25,7 @@ const DashboardMonitor = ({ externalData }) => {
   const [kpiStats, setKpiStats] = useState({
     avgWaitTime: 15.2, energySaving: 0, emptyRate: 45, gridBalanceScore: 80, carpoolRatio: 1.2, greenEnergyUsage: 30
   });
-  const [windScenario, setWindScenario] = useState("中風能");
+  const [windScenario, setWindScenario] = useState("balanced"); // 儲存鍵值而非文字
   const logEndRef = useRef(null);
   const scrollContainerRef = useRef(null); // 用來抓取捲動容器
 
@@ -68,10 +71,10 @@ const DashboardMonitor = ({ externalData }) => {
 
     // 🔥 接收來自 KinmenMapSim 的真實電網數據
     if (metrics && metrics.gridInfo) {
-      // 更新風力場景（根據電網狀態）
-      let currentScenario = "供需平衡";
-      if (metrics.gridInfo.status === 'GREEN') currentScenario = "綠能充沛";
-      else if (metrics.gridInfo.status === 'PEAK') currentScenario = "尖峰負載";
+      // 更新風力場景（根據電網狀態）- 儲存狀態鍵值而非文字
+      let currentScenario = "balanced";
+      if (metrics.gridInfo.status === 'GREEN') currentScenario = "abundant";
+      else if (metrics.gridInfo.status === 'PEAK') currentScenario = "peak";
       setWindScenario(currentScenario);
 
       // 更新電網數據圖表（每 2 步更新一次以減少渲染）
@@ -138,30 +141,30 @@ const DashboardMonitor = ({ externalData }) => {
       <div className="grid grid-cols-12 gap-4">
         <div className="col-span-12 lg:col-span-8 flex items-center gap-4 bg-slate-900/50 p-3 rounded-xl border border-slate-800">
            <Activity className="text-cyan-400" size={20} />
-           <span className="text-sm text-slate-300 font-mono">Algorithm: <span className="text-cyan-300">PPO + FedBuff</span></span>
+           <span className="text-sm text-slate-300 font-mono">{t('dashboard.algorithm')}: <span className="text-cyan-300">PPO + FedBuff</span></span>
            <span className="text-slate-600">|</span>
-           <span className="text-sm text-slate-300 font-mono">Privacy: <span className="text-emerald-400">DP-SGD Enabled</span></span>
+           <span className="text-sm text-slate-300 font-mono">{t('dashboard.privacy')}: <span className="text-emerald-400">DP-SGD Enabled</span></span>
         </div>
 
         {/* 三個小卡片顯示核心狀態 */}
         <div className="col-span-4 lg:col-span-1 bg-slate-900 p-2 rounded-xl border border-slate-800 flex flex-col items-center justify-center">
-            <span className="text-[10px] text-slate-400 flex gap-1"><Clock size={10}/> Sim Time</span>
-            <span className="text-lg font-mono font-bold text-cyan-300">{step} <span className="text-xs">min</span></span>
+            <span className="text-[10px] text-slate-400 flex gap-1"><Clock size={10}/> {t('dashboard.simTime')}</span>
+            <span className="text-lg font-mono font-bold text-cyan-300">{step} <span className="text-xs">{t('dashboard.minutes')}</span></span>
         </div>
         <div className="col-span-4 lg:col-span-1 bg-slate-900 p-2 rounded-xl border border-slate-800 flex flex-col items-center justify-center">
-            <span className="text-[10px] text-slate-400 flex gap-1"><Layers size={10}/> Epoch</span>
+            <span className="text-[10px] text-slate-400 flex gap-1"><Layers size={10}/> {t('dashboard.epoch')}</span>
             <span className="text-lg font-mono font-bold text-purple-400">{globalEpoch}</span>
         </div>
         <div className="col-span-4 lg:col-span-2 bg-slate-900 p-2 rounded-xl border border-slate-800 flex flex-col items-center justify-center">
-            <span className="text-[10px] text-slate-400 flex gap-1"><Car size={10}/> Active Fleet</span>
-            <span className="text-lg font-mono font-bold text-green-400">{displayVehicles.length} <span className="text-xs">vehs</span></span>
+            <span className="text-[10px] text-slate-400 flex gap-1"><Car size={10}/> {t('dashboard.activeFleet')}</span>
+            <span className="text-lg font-mono font-bold text-green-400">{displayVehicles.length} <span className="text-xs">{t('dashboard.vehicles')}</span></span>
         </div>
       </div>
 
       <main className="grid grid-cols-12 gap-4">
         {/* KPI 卡片區 */}
         <div className="col-span-12 grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
-          <KpiCard icon={Wind} label="綠能使用率" value={`${kpiStats.greenEnergyUsage}%`} sub={windScenario} color="text-green-400" />
+          <KpiCard icon={Wind} label={t('dashboard.kpi.greenEnergyUsage')} value={`${kpiStats.greenEnergyUsage}%`} sub={t(`dashboard.windScenarios.${windScenario}`)} color="text-green-400" />
 
           {/* 升級版：減碳貢獻卡片 */}
           <div className="col-span-2 bg-gradient-to-br from-emerald-900/50 to-slate-900 p-3 rounded-xl border border-emerald-700/50 flex flex-col justify-between relative overflow-hidden group hover:from-emerald-900/70 transition-all">
@@ -172,7 +175,7 @@ const DashboardMonitor = ({ externalData }) => {
 
             <div className="flex justify-between items-start mb-1 z-10">
               <span className="text-[10px] text-emerald-300 uppercase tracking-wider flex items-center gap-1">
-                <ShieldCheck size={12}/> 減碳貢獻
+                <ShieldCheck size={12}/> {t('dashboard.kpi.carbonReduction')}
               </span>
               <span className="text-xs font-mono text-emerald-400 bg-emerald-900/80 px-2 py-0.5 rounded">
                 -{kgCO2.toFixed(1)} kg CO₂
@@ -182,28 +185,28 @@ const DashboardMonitor = ({ externalData }) => {
             <div className="z-10">
               <div className="flex items-end gap-2">
                 <span className="text-2xl font-bold text-white">{treesPlanted}</span>
-                <span className="text-xs text-emerald-400 mb-1">棵樹 🌲</span>
+                <span className="text-xs text-emerald-400 mb-1">{t('dashboard.kpi.trees')}</span>
               </div>
               <div className="text-[10px] text-slate-400 mt-1">
-                ≈ 手機充電 {smartphoneCharges.toLocaleString()} 次 📱
+                ≈ {t('dashboard.kpi.phoneCharges')} {smartphoneCharges.toLocaleString()} {t('dashboard.kpi.times')}
               </div>
             </div>
           </div>
 
-          <KpiCard icon={Users} label="平均等待" value={`${kpiStats.avgWaitTime}m`} sub="服務水準" color="text-blue-400" />
-          <KpiCard icon={BatteryCharging} label="電網平衡分" value={kpiStats.gridBalanceScore} sub="V2G 貢獻" color="text-purple-400" />
-          <KpiCard icon={RotateCcw} label="空車率" value={`${kpiStats.emptyRate}%`} sub="資源閒置" color="text-red-400" />
-          <KpiCard icon={Users} label="組隊比例" value={kpiStats.carpoolRatio} sub="平均載客" color="text-cyan-400" />
+          <KpiCard icon={Users} label={t('dashboard.kpi.avgWait')} value={`${kpiStats.avgWaitTime}m`} sub={t('dashboard.kpi.serviceLevel')} color="text-blue-400" />
+          <KpiCard icon={BatteryCharging} label={t('dashboard.kpi.gridBalance')} value={kpiStats.gridBalanceScore} sub={t('dashboard.kpi.v2gContribution')} color="text-purple-400" />
+          <KpiCard icon={RotateCcw} label={t('dashboard.kpi.emptyRate')} value={`${kpiStats.emptyRate}%`} sub={t('dashboard.kpi.resourceIdle')} color="text-red-400" />
+          <KpiCard icon={Users} label={t('dashboard.kpi.carpoolRatio')} value={kpiStats.carpoolRatio} sub={t('dashboard.kpi.avgPassengers')} color="text-cyan-400" />
         </div>
 
         {/* 永續影響力指標 - 讓數據說人話 */}
         <div className="col-span-12 bg-gradient-to-br from-emerald-900/30 to-green-900/20 p-4 rounded-xl border border-emerald-700/50">
           <div className="flex items-center gap-2 mb-3">
             <Leaf className="text-emerald-400" size={18} />
-            <h3 className="text-sm font-semibold text-emerald-300">永續影響力 - AI 優化成效</h3>
+            <h3 className="text-sm font-semibold text-emerald-300">{t('dashboard.sustainability.title')}</h3>
             <div className="ml-auto flex items-center gap-1 text-xs text-emerald-400">
               <TrendingDown size={14} />
-              <span className="font-mono">{savingsRate}% 能耗降低</span>
+              <span className="font-mono">{savingsRate}% {t('dashboard.sustainability.energyReduction')}</span>
             </div>
           </div>
 
@@ -212,40 +215,40 @@ const DashboardMonitor = ({ externalData }) => {
             <div className="bg-slate-900/50 p-3 rounded-lg border border-emerald-700/30">
               <div className="flex items-center gap-2 mb-1">
                 <Zap className="text-yellow-400" size={14} />
-                <span className="text-[10px] text-slate-400 uppercase">節省電力</span>
+                <span className="text-[10px] text-slate-400 uppercase">{t('dashboard.sustainability.energySaved')}</span>
               </div>
               <div className="text-2xl font-bold text-yellow-300">{savedKwh.toFixed(2)}</div>
-              <div className="text-[10px] text-slate-500">度 (kWh)</div>
+              <div className="text-[10px] text-slate-500">{t('dashboard.sustainability.kwh')}</div>
             </div>
 
             {/* 減碳量 */}
             <div className="bg-slate-900/50 p-3 rounded-lg border border-emerald-700/30">
               <div className="flex items-center gap-2 mb-1">
                 <Wind className="text-cyan-400" size={14} />
-                <span className="text-[10px] text-slate-400 uppercase">減少碳排</span>
+                <span className="text-[10px] text-slate-400 uppercase">{t('dashboard.sustainability.carbonReduced')}</span>
               </div>
               <div className="text-2xl font-bold text-cyan-300">{kgCO2.toFixed(2)}</div>
-              <div className="text-[10px] text-slate-500">kg CO₂e</div>
+              <div className="text-[10px] text-slate-500">{t('dashboard.sustainability.kgCO2')}</div>
             </div>
 
             {/* 相當於種樹 */}
             <div className="bg-slate-900/50 p-3 rounded-lg border border-emerald-700/30">
               <div className="flex items-center gap-2 mb-1">
                 <Leaf className="text-green-400" size={14} />
-                <span className="text-[10px] text-slate-400 uppercase">相當於種樹</span>
+                <span className="text-[10px] text-slate-400 uppercase">{t('dashboard.sustainability.treesEquivalent')}</span>
               </div>
               <div className="text-2xl font-bold text-green-400">{treesPlanted}</div>
-              <div className="text-[10px] text-slate-500">棵 (年吸碳量)</div>
+              <div className="text-[10px] text-slate-500">{t('dashboard.sustainability.trees')}</div>
             </div>
 
             {/* 手機充電次數 */}
             <div className="bg-slate-900/50 p-3 rounded-lg border border-emerald-700/30">
               <div className="flex items-center gap-2 mb-1">
                 <Smartphone className="text-blue-400" size={14} />
-                <span className="text-[10px] text-slate-400 uppercase">可充手機</span>
+                <span className="text-[10px] text-slate-400 uppercase">{t('dashboard.sustainability.phoneCharges')}</span>
               </div>
               <div className="text-2xl font-bold text-blue-400">{smartphoneCharges}</div>
-              <div className="text-[10px] text-slate-500">次 (完整充電)</div>
+              <div className="text-[10px] text-slate-500">{t('dashboard.sustainability.charges')}</div>
             </div>
           </div>
         </div>
@@ -253,7 +256,7 @@ const DashboardMonitor = ({ externalData }) => {
         {/* 圖表區 */}
         <div className="col-span-12 lg:col-span-5 flex flex-col gap-4">
           <div className="bg-slate-900 p-4 rounded-xl border border-slate-800 h-[250px]">
-            <h3 className="flex items-center gap-2 text-sm font-semibold text-slate-300 mb-2"><Activity size={16} /> FRL 訓練收斂 (Loss/Reward)</h3>
+            <h3 className="flex items-center gap-2 text-sm font-semibold text-slate-300 mb-2"><Activity size={16} /> {t('dashboard.charts.frlTraining')}</h3>
             <div className="h-[200px] w-full">
               <ResponsiveContainer width="100%" height="100%">
                 <LineChart data={trainingMetrics}>
@@ -270,7 +273,7 @@ const DashboardMonitor = ({ externalData }) => {
           </div>
 
           <div className="bg-slate-900 p-4 rounded-xl border border-slate-800 h-[250px]">
-            <h3 className="flex items-center gap-2 text-sm font-semibold text-slate-300 mb-2"><Zap size={16} /> 微電網供需動態</h3>
+            <h3 className="flex items-center gap-2 text-sm font-semibold text-slate-300 mb-2"><Zap size={16} /> {t('dashboard.charts.microgrid')}</h3>
             <div className="h-[200px] w-full">
               <ResponsiveContainer width="100%" height="100%">
                 <AreaChart data={energyData}>
@@ -285,11 +288,11 @@ const DashboardMonitor = ({ externalData }) => {
                     </linearGradient>
                   </defs>
                   <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
-                  <XAxis dataKey="time" stroke="#94a3b8" tick={{fontSize: 10}} label={{ value: 'Time (min)', position: 'insideBottom', offset: -5, fill: '#64748b', fontSize: 10 }} />
-                  <YAxis type="number" domain={[0, 100]} stroke="#94a3b8" tick={{fontSize: 10}} label={{ value: '%', angle: -90, position: 'insideLeft', fill: '#64748b' }} />
+                  <XAxis dataKey="time" stroke="#94a3b8" tick={{fontSize: 10}} label={{ value: t('dashboard.charts.timeAxis'), position: 'insideBottom', offset: -5, fill: '#64748b', fontSize: 10 }} />
+                  <YAxis type="number" domain={[0, 100]} stroke="#94a3b8" tick={{fontSize: 10}} label={{ value: t('dashboard.charts.percentAxis'), angle: -90, position: 'insideLeft', fill: '#64748b' }} />
                   <Tooltip contentStyle={{ backgroundColor: '#1e293b', borderColor: '#334155', fontSize: '12px' }} />
-                  <Area type="monotone" dataKey="windSupply" name="太陽能發電" stroke="#facc15" fillOpacity={1} fill="url(#colorSolar)" strokeWidth={2} isAnimationActive={false} />
-                  <Area type="monotone" dataKey="gridLoad" name="電網負載" stroke="#f59e0b" fillOpacity={1} fill="url(#colorLoad)" strokeWidth={2} isAnimationActive={false} />
+                  <Area type="monotone" dataKey="windSupply" name={t('dashboard.charts.solarGeneration')} stroke="#facc15" fillOpacity={1} fill="url(#colorSolar)" strokeWidth={2} isAnimationActive={false} />
+                  <Area type="monotone" dataKey="gridLoad" name={t('dashboard.charts.gridLoad')} stroke="#f59e0b" fillOpacity={1} fill="url(#colorLoad)" strokeWidth={2} isAnimationActive={false} />
                 </AreaChart>
               </ResponsiveContainer>
             </div>
@@ -301,11 +304,11 @@ const DashboardMonitor = ({ externalData }) => {
           {/* 即時車隊分佈 (這裡需要 KinmenMapSim 傳送正確的 Zone 名稱) */}
           <div className="bg-slate-900 p-4 rounded-xl border border-slate-800 min-h-[300px]">
             <div className="flex justify-between items-center mb-4">
-              <h3 className="flex items-center gap-2 text-sm font-semibold text-slate-300"><MapPin size={16} /> 即時車隊分佈 (Zone Distribution)</h3>
+              <h3 className="flex items-center gap-2 text-sm font-semibold text-slate-300"><MapPin size={16} /> {t('dashboard.fleetDistribution.title')}</h3>
               <div className="flex gap-2 text-[10px]">
-                <span className="px-2 py-1 rounded bg-emerald-500/20 text-emerald-400">Service</span>
-                <span className="px-2 py-1 rounded bg-blue-500/20 text-blue-400">Charging</span>
-                <span className="px-2 py-1 rounded bg-slate-700 text-slate-400">Idle</span>
+                <span className="px-2 py-1 rounded bg-emerald-500/20 text-emerald-400">{t('dashboard.fleetDistribution.statusService')}</span>
+                <span className="px-2 py-1 rounded bg-blue-500/20 text-blue-400">{t('dashboard.fleetDistribution.statusCharging')}</span>
+                <span className="px-2 py-1 rounded bg-slate-700 text-slate-400">{t('dashboard.fleetDistribution.statusIdle')}</span>
               </div>
             </div>
             <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
@@ -315,7 +318,7 @@ const DashboardMonitor = ({ externalData }) => {
                   <div key={zone} className="bg-slate-800/50 p-3 rounded-lg border border-slate-700 hover:border-slate-500 transition-colors">
                     <div className="flex justify-between items-center mb-2">
                       <span className="text-xs font-bold text-slate-300">{zone}</span>
-                      <span className="text-xs text-slate-500">{vehiclesInZone.length} 輛</span>
+                      <span className="text-xs text-slate-500">{vehiclesInZone.length} {t('dashboard.fleetDistribution.vehicleCount')}</span>
                     </div>
                     <div className="flex flex-wrap gap-1 min-h-[16px]">
                       {vehiclesInZone.map(v => (

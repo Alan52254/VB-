@@ -3,9 +3,12 @@ import React, { useState } from 'react';
 import KinmenMapSim from './KinmenMapSim';
 import DashboardMonitor from './DashboardMonitor';
 import GlobalOverviewPanel from './GlobalOverviewPanel';
+import LanguageSwitcher from './LanguageSwitcher'; // 🌐 引入語言切換器
+import { useLanguage } from './i18n/LanguageContext'; // 🌐 引入 Hook
 import { Map, BarChart3, Play, Pause, Radio } from 'lucide-react';
 
 const IntegratedPlatform = () => {
+  const { t } = useLanguage(); // 🌐 取得翻譯函式
   const [realTimeData, setRealTimeData] = useState(null);
   const [activeTab, setActiveTab] = useState('map');
   const [isSystemRunning, setIsSystemRunning] = useState(false);
@@ -15,20 +18,25 @@ const IntegratedPlatform = () => {
       {/* Header */}
       <div className="flex items-center justify-between px-6 py-3 bg-slate-900 border-b border-slate-800 shadow-md z-10 shrink-0">
         <h1 className="text-xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 to-blue-500">
-          金門 Eco-MaaS 戰情中心
+          {t('platform.title') || '金門 Eco-MaaS 戰情中心'}
         </h1>
 
-        <button
-          onClick={() => setIsSystemRunning(!isSystemRunning)}
-          className={`flex items-center gap-2 px-6 py-1.5 rounded-full font-bold transition-all border ${
-            isSystemRunning
-              ? 'bg-yellow-500/20 text-yellow-400 border-yellow-500/50 hover:bg-yellow-500/30'
-              : 'bg-emerald-500/20 text-emerald-400 border-emerald-500/50 hover:bg-emerald-500/30'
-          }`}
-        >
-          {isSystemRunning ? <Pause size={18} /> : <Play size={18} />}
-          {isSystemRunning ? '系統運行中' : '啟動模擬'}
-        </button>
+        <div className="flex items-center gap-4">
+          {/* 🌐 語言切換按鈕 */}
+          <LanguageSwitcher position="header" />
+
+          <button
+            onClick={() => setIsSystemRunning(!isSystemRunning)}
+            className={`flex items-center gap-2 px-6 py-1.5 rounded-full font-bold transition-all border ${
+              isSystemRunning
+                ? 'bg-yellow-500/20 text-yellow-400 border-yellow-500/50 hover:bg-yellow-500/30'
+                : 'bg-emerald-500/20 text-emerald-400 border-emerald-500/50 hover:bg-emerald-500/30'
+            }`}
+          >
+            {isSystemRunning ? <Pause size={18} /> : <Play size={18} />}
+            {isSystemRunning ? t('platform.systemRunning') : t('platform.startSimulation')}
+          </button>
+        </div>
 
         <div className="flex bg-slate-800 rounded-lg p-1 border border-slate-700">
           <button
@@ -40,7 +48,7 @@ const IntegratedPlatform = () => {
             }`}
           >
             <Map size={18} />
-            <span>場域監控</span>
+            <span>{t('platform.fieldMonitor')}</span>
           </button>
           <button
             onClick={() => setActiveTab('dashboard')}
@@ -51,7 +59,7 @@ const IntegratedPlatform = () => {
             }`}
           >
             <BarChart3 size={18} />
-            <span>FRL 數據分析</span>
+            <span>{t('platform.frlAnalysis')}</span>
           </button>
         </div>
       </div>
@@ -80,7 +88,7 @@ const IntegratedPlatform = () => {
             <div className="col-span-12 lg:col-span-4 flex flex-col h-full bg-slate-900 border border-slate-800 rounded-xl overflow-hidden shadow-lg">
               <div className="p-3 bg-slate-800/50 border-b border-slate-700 flex items-center gap-2">
                 <Radio className="text-red-400 animate-pulse" size={18} />
-                <span className="font-bold text-slate-200">全域站點觀測 (Global Brain)</span>
+                <span className="font-bold text-slate-200">{t('platform.globalBrain')}</span>
               </div>
 
               <div className="flex-1 overflow-y-auto p-2 bg-slate-900/50">

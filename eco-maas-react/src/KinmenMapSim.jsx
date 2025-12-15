@@ -29,6 +29,7 @@
  */
 
 import React, { useState, useEffect, useRef } from 'react';
+import { useLanguage } from './i18n/LanguageContext';
 
 // --- 外部圖示庫 (Lucide React) ---
 // 用於地圖標記、儀表板圖示、按鈕控制、狀態指示等
@@ -57,9 +58,7 @@ import {
   Flag,             // 地標 (莒光樓)
   Home,             // 聚落 (山后民俗村)
   Warehouse,        // 總站/倉庫 (金城總站)
-  Activity,         // 活動/狀態
   Signal,           // 訊號/連線
-  Leaf,             // 環保/ESG
   ToggleLeft,       // 切換開關 (未使用)
   ToggleRight,      // 切換開關 (未使用)
   Sun,              // 太陽 (白天/太陽能發電)
@@ -436,9 +435,12 @@ const styles = {
  * ============================================================================
  */
 const KinmenMapSim = ({ onSimulationUpdate, isRunningExternal }) => {
-  
+
+  // --- 國際化 Hook ---
+  const { t } = useLanguage();
+
   // --- 3.1 State 定義 (React Hooks) ---
-  
+
   // 1. 車輛狀態列表 (Vehicles)
   // 包含位置(x,y)、電量(battery)、載客數(passengers)、物理參數(dragCoeff, power)
   const [vehicles, setVehicles] = useState([]);
@@ -487,15 +489,15 @@ const KinmenMapSim = ({ onSimulationUpdate, isRunningExternal }) => {
   // 由於 setInterval 閉包會鎖住初始 state，導致 updateGameLogic 讀不到最新數據。
   // 我們使用 useRef (latestDataRef) 來儲存最新的 State Snapshot。
   // 每次 render 時透過 useEffect 更新 Ref，Game Loop 再從 Ref 讀取最新值。
-  const latestDataRef = useRef({ vehicles: [], gameTime: 0, metrics: {}, stations: [], mode: 'rl', logs: [] });
+  const latestDataRef = useRef({ vehicles: [], gameTime: 0, metrics: {}, stations: [], mode: 'rl', logs: [], t: null });
 
   // ⚡ 新增：專門用來解決「閉包陷阱」的能耗累加器
   const energyAccumulatorRef = useRef({ total: 0, baseline: 0 });
 
   // 監聽 State 變化，同步更新 Ref
   useEffect(() => {
-    latestDataRef.current = { vehicles, gameTime, metrics, stations, mode, logs }; // 🔥 把 logs 加進去
-  }, [vehicles, gameTime, metrics, stations, mode, logs]);
+    latestDataRef.current = { vehicles, gameTime, metrics, stations, mode, logs, t }; // 🔥 把 t 加進去
+  }, [vehicles, gameTime, metrics, stations, mode, logs, t]);
 
   // --- 3.3 初始化 (Initialization) ---
   // 元件掛載時，執行一次重置
@@ -643,7 +645,7 @@ const KinmenMapSim = ({ onSimulationUpdate, isRunningExternal }) => {
     setSelectedVehicleId(null);
     setActiveSpot(getLoc('depot')); // 預設顯示總站卡片
 
-    addLog("SYSTEM", "系統初始化完成。RL Agent 準備就緒。");
+    addLog("SYSTEM", t('map.messages.systemInit'));
   };
 
   // 輔助函式：寫入日誌（結構化版本）
@@ -713,7 +715,8 @@ const KinmenMapSim = ({ onSimulationUpdate, isRunningExternal }) => {
       vehicles: currentVehicles,
       gameTime: currentGameTime,
       stations: currentStations,
-      mode: currentMode
+      mode: currentMode,
+      t: currentT
     } = latestDataRef.current;
 
     // 1. 時間推進
@@ -816,7 +819,7 @@ const KinmenMapSim = ({ onSimulationUpdate, isRunningExternal }) => {
           status = 'moving';
           logBuffer.push({
             category: 'SYSTEM',
-            msg: `[Bus #${v.id}] 充電完成 (SoC: 95%) -> 恢復服務`
+            msg: `[Bus #${v.id}] ${currentT('map.messages.chargeComplete')}`
           });
         }
         // 充電時車輛靜止，顯示充電中
@@ -854,7 +857,7 @@ const KinmenMapSim = ({ onSimulationUpdate, isRunningExternal }) => {
         if (isPlatooning && !v.platooning && Math.random() < 0.05) { // 5% 機率記錄
           logBuffer.push({
             category: 'AI',
-            msg: `[Bus #${v.id}] 偵測到鄰近車輛 -> 啟動編隊行駛 (節能: 60%)`
+            msg: `[Bus #${v.id}] ${currentT('map.messages.platoonActivated')}`
           });
         }
       }
@@ -903,7 +906,7 @@ const KinmenMapSim = ({ onSimulationUpdate, isRunningExternal }) => {
           // 🔥 更專業的 AI 術語
           logBuffer.push({
             category: 'AI',
-            msg: `[Bus #${v.id}] SoC低於閾值 (30%) -> 執行返站充電策略 (Reward: +15)`
+            msg: `[Bus #${v.id}] ${currentT('map.messages.lowBatteryCharge')}`
           });
           passengers = 0; // 清客
         } else {
@@ -926,10 +929,10 @@ const KinmenMapSim = ({ onSimulationUpdate, isRunningExternal }) => {
 
             // 🔥 只在高需求站點記錄 (避免刷屏)
             if (currentBoarded >= 3 && Math.random() < 0.1) { // 10% 機率記錄
-              const stationName = station.name || stopId;
+              const stationName = currentT(`map.locations.${stopId}`);
               logBuffer.push({
                 category: 'AI',
-                msg: `[Bus #${v.id}] 在 ${stationName} 接載 ${currentBoarded} 人 (載客率: ${Math.round((passengers / v.capacity) * 100)}%)`
+                msg: `[Bus #${v.id}] ${stationName} ${currentT('map.messages.passengerBoarded')} ${currentBoarded} ${currentT('map.messages.people')} (${currentT('map.messages.loadRate')}: ${Math.round((passengers / v.capacity) * 100)}%)`
               });
             }
           }
@@ -940,7 +943,7 @@ const KinmenMapSim = ({ onSimulationUpdate, isRunningExternal }) => {
       if (battery < 15 && battery > 5 && Math.random() < 0.02) { // 2% 機率記錄警告
         logBuffer.push({
           category: 'WARN',
-          msg: `[Bus #${v.id}] 電量危急 (${Math.round(battery)}%) - 建議立即返站`
+          msg: `[Bus #${v.id}] ${currentT('map.messages.batteryWarning')} (${Math.round(battery)}%) ${currentT('map.messages.recommendCharge')}`
         });
       }
 
@@ -1038,11 +1041,11 @@ const KinmenMapSim = ({ onSimulationUpdate, isRunningExternal }) => {
 
       if (busiest.length > 0) {
         const summary = busiest
-          .map(s => `${s.name} 等候 ${s.queue} 人，累計服務 ${(s.totalServed || 0)} 人`)
+          .map(s => `${currentT(`map.locations.${s.id}`)} ${currentT('map.messages.waiting')} ${s.queue} ${currentT('map.messages.people')}，${currentT('map.messages.totalServed')} ${(s.totalServed || 0)} ${currentT('map.messages.people')}`)
           .join(' / ');
-        addLog('SYSTEM', `站點擁擠概況：${summary}`);
+        addLog('SYSTEM', `${currentT('map.messages.stationCongestion')}${summary}`);
       } else {
-        addLog('SYSTEM', '站點擁擠概況：目前各站候車量穩定。');
+        addLog('SYSTEM', `${currentT('map.messages.stationCongestion')}${currentT('map.messages.stationStable')}`);
       }
     }
   };
@@ -1065,20 +1068,20 @@ const KinmenMapSim = ({ onSimulationUpdate, isRunningExternal }) => {
       return (
         <div style={{ animation: 'fadeIn 0.3s' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #334155', paddingBottom: '10px', marginBottom: '10px' }}>
-            <span style={{ fontSize: '1.2rem', fontWeight: 'bold', color: '#38bdf8' }}>車輛監控 #{v.id}</span>
-            <button onClick={() => setSelectedVehicleId(null)} style={{ background: 'none', border: 'none', color: '#94a3b8', cursor: 'pointer' }}>回總覽</button>
+            <span style={{ fontSize: '1.2rem', fontWeight: 'bold', color: '#38bdf8' }}>{t('map.vehicleMonitor.title')} #{v.id}</span>
+            <button onClick={() => setSelectedVehicleId(null)} style={{ background: 'none', border: 'none', color: '#94a3b8', cursor: 'pointer' }}>{t('map.vehicleMonitor.backToOverview')}</button>
           </div>
-          
+
           <div style={styles.kpiGrid}>
-            <div style={styles.kpiBox}><Gauge size={18} color="#facc15" /><span style={{ fontSize: '0.75rem', color: '#94a3b8' }}>車速</span><span style={{ fontSize: '1.1rem', fontWeight: 'bold' }}>{v.speed}</span></div>
-            <div style={styles.kpiBox}><Zap size={18} color={v.power < 0 ? '#4ade80' : '#f87171'} /><span style={{ fontSize: '0.75rem', color: '#94a3b8' }}>功率</span><span style={{ fontSize: '1.1rem', fontWeight: 'bold' }}>{v.power}</span></div>
-            <div style={styles.kpiBox}><Wind size={18} color="#a78bfa" /><span style={{ fontSize: '0.75rem', color: '#94a3b8' }}>風阻</span><span style={{ fontSize: '1.1rem', fontWeight: 'bold' }}>{v.dragCoeff}</span></div>
-            <div style={styles.kpiBox}><Users size={18} color="#60a5fa" /><span style={{ fontSize: '0.75rem', color: '#94a3b8' }}>載客</span><span style={{ fontSize: '1.1rem', fontWeight: 'bold' }}>{v.passengers}</span></div>
+            <div style={styles.kpiBox}><Gauge size={18} color="#facc15" /><span style={{ fontSize: '0.75rem', color: '#94a3b8' }}>{t('map.vehicleMonitor.speed')}</span><span style={{ fontSize: '1.1rem', fontWeight: 'bold' }}>{v.speed}</span></div>
+            <div style={styles.kpiBox}><Zap size={18} color={v.power < 0 ? '#4ade80' : '#f87171'} /><span style={{ fontSize: '0.75rem', color: '#94a3b8' }}>{t('map.vehicleMonitor.power')}</span><span style={{ fontSize: '1.1rem', fontWeight: 'bold' }}>{v.power}</span></div>
+            <div style={styles.kpiBox}><Wind size={18} color="#a78bfa" /><span style={{ fontSize: '0.75rem', color: '#94a3b8' }}>{t('map.vehicleMonitor.dragCoeff')}</span><span style={{ fontSize: '1.1rem', fontWeight: 'bold' }}>{v.dragCoeff}</span></div>
+            <div style={styles.kpiBox}><Users size={18} color="#60a5fa" /><span style={{ fontSize: '0.75rem', color: '#94a3b8' }}>{t('map.vehicleMonitor.passengers')}</span><span style={{ fontSize: '1.1rem', fontWeight: 'bold' }}>{v.passengers}</span></div>
           </div>
-          
+
           <div style={{ marginTop: '15px' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem', marginBottom: '5px' }}>
-              <span>電池 SoC</span>
+              <span>{t('map.vehicleMonitor.battery')}</span>
               <span style={{ color: v.battery < 20 ? '#ef4444' : '#4ade80' }}>{Math.round(v.battery)}%</span>
             </div>
             <div style={{ width: '100%', height: '8px', background: '#334155', borderRadius: '4px', overflow: 'hidden' }}>
@@ -1088,8 +1091,8 @@ const KinmenMapSim = ({ onSimulationUpdate, isRunningExternal }) => {
 
           {/* 🔥 乘客動態：顯示本站上/下車人數 */}
           <div style={{marginTop: '15px', backgroundColor: 'rgba(0,0,0,0.2)', padding: '10px', borderRadius: '8px', display: 'flex', justifyContent: 'space-between', fontSize: '0.9rem'}}>
-             <span style={{color: '#4ade80'}}>本站上車: +{v.boardedLast}</span>
-             <span style={{color: '#f87171'}}>本站下車: -{v.alightedLast}</span>
+             <span style={{color: '#4ade80'}}>{t('map.vehicleMonitor.boardedLast')}: +{v.boardedLast}</span>
+             <span style={{color: '#f87171'}}>{t('map.vehicleMonitor.alightedLast')}: -{v.alightedLast}</span>
           </div>
         </div>
       );
@@ -1101,34 +1104,34 @@ const KinmenMapSim = ({ onSimulationUpdate, isRunningExternal }) => {
           <div style={{ ...styles.card, padding: '15px', borderLeft: `4px solid ${mode === 'rl' ? '#a855f7' : '#94a3b8'}`, marginBottom: '15px' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '5px' }}>
               <Cpu size={18} color={mode === 'rl' ? '#a855f7' : '#94a3b8'} />
-              <span style={{ fontWeight: 'bold', color: '#e2e8f0' }}>AI 核心</span>
+              <span style={{ fontWeight: 'bold', color: '#e2e8f0' }}>{t('map.aiCore.title')}</span>
             </div>
             <div style={{ fontSize: '0.8rem', color: '#94a3b8' }}>
-              模式：<span style={{ color: mode === 'rl' ? '#4ade80' : '#cbd5e1' }}>{mode === 'rl' ? 'RL Agent' : 'Baseline'}</span>
+              {t('map.aiCore.mode')}：<span style={{ color: mode === 'rl' ? '#4ade80' : '#cbd5e1' }}>{mode === 'rl' ? t('map.aiCore.modeRL') : t('map.aiCore.modeBaseline')}</span>
             </div>
           </div>
-          
+
           <div style={styles.kpiGrid}>
             <div style={styles.kpiBox}>
-                <span style={{ fontSize: '0.75rem', color: '#94a3b8' }}>組隊率</span>
+                <span style={{ fontSize: '0.75rem', color: '#94a3b8' }}>{t('map.kpi.platoonRate')}</span>
                 <span style={{ fontSize: '1.1rem', fontWeight: 'bold', color: '#4ade80' }}>
                     {metrics.totalDist > 0 ? ((metrics.platoonDist / metrics.totalDist) * 100).toFixed(0) : 0}%
                 </span>
             </div>
             <div style={styles.kpiBox}>
-                <span style={{ fontSize: '0.75rem', color: '#94a3b8' }}>空車率</span>
+                <span style={{ fontSize: '0.75rem', color: '#94a3b8' }}>{t('map.kpi.emptyRate')}</span>
                 <span style={{ fontSize: '1.1rem', fontWeight: 'bold', color: '#f87171' }}>
                     {metrics.totalDist > 0 ? ((metrics.emptyDist / metrics.totalDist) * 100).toFixed(0) : 0}%
                 </span>
             </div>
             <div style={styles.kpiBox}>
-                <span style={{ fontSize: '0.75rem', color: '#94a3b8' }}>效率</span>
+                <span style={{ fontSize: '0.75rem', color: '#94a3b8' }}>{t('map.kpi.efficiency')}</span>
                 <span style={{ fontSize: '1.1rem', fontWeight: 'bold', color: '#38bdf8' }}>
                     {metrics.totalEnergy > 0 ? (metrics.totalServed / metrics.totalEnergy).toFixed(1) : 0}
                 </span>
             </div>
             <div style={styles.kpiBox}>
-                <span style={{ fontSize: '0.75rem', color: '#94a3b8' }}>等待</span>
+                <span style={{ fontSize: '0.75rem', color: '#94a3b8' }}>{t('map.kpi.waiting')}</span>
                 <span style={{ fontSize: '1.1rem', fontWeight: 'bold', color: '#eab308' }}>
                     {metrics.totalServed > 0 ? (metrics.totalWaitTime / metrics.totalServed).toFixed(1) : 0}m
                 </span>
@@ -1179,7 +1182,7 @@ const KinmenMapSim = ({ onSimulationUpdate, isRunningExternal }) => {
               fontSize: '0.8rem'
             }}
           >
-            Baseline
+            {t('map.mode.baseline')}
           </button>
           <button
             onClick={() => setMode('rl')}
@@ -1194,7 +1197,7 @@ const KinmenMapSim = ({ onSimulationUpdate, isRunningExternal }) => {
               fontSize: '0.8rem'
             }}
           >
-            RL Agent
+            {t('map.mode.rlAgent')}
           </button>
         </div>
         
@@ -1463,13 +1466,13 @@ const KinmenMapSim = ({ onSimulationUpdate, isRunningExternal }) => {
           {activeSpot && (
             <div style={styles.spotCard}>
               <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px'}}>
-                <span style={{fontSize: '1.2rem', fontWeight: 'bold', color: activeSpot.color}}>{activeSpot.name}</span>
+                <span style={{fontSize: '1.2rem', fontWeight: 'bold', color: activeSpot.color}}>{t(`map.locations.${activeSpot.id}`)}</span>
                 <button onClick={() => setActiveSpot(null)} style={{background: 'none', border: 'none', color: '#94a3b8', cursor: 'pointer'}}><X size={18}/></button>
               </div>
               <div style={{height: '80px', backgroundColor: activeSpot.color, borderRadius: '8px', marginBottom: '10px', opacity: 0.8, display: 'flex', alignItems: 'center', justifyContent: 'center'}}>
                   <MapPin size={30} color="white" opacity={0.8} />
               </div>
-              <p style={{fontSize: '0.9rem', color: '#cbd5e1', lineHeight: '1.4', margin: 0}}>{activeSpot.desc}</p>
+              <p style={{fontSize: '0.9rem', color: '#cbd5e1', lineHeight: '1.4', margin: 0}}>{t(`map.descriptions.${activeSpot.id}`)}</p>
             </div>
           )}
         </div>
@@ -1487,20 +1490,19 @@ const KinmenMapSim = ({ onSimulationUpdate, isRunningExternal }) => {
 
                 // UI 狀態判斷
                 let statusColor = '#38bdf8';
-                let statusText = '供需平衡';
-                let Icon = Activity;
+                let statusText = t('map.microgrid.statusBalanced');
 
                 if (status === 'GREEN') {
-                  statusColor = '#4ade80'; statusText = '綠能充沛'; Icon = Leaf;
+                  statusColor = '#4ade80'; statusText = t('map.microgrid.statusGreen');
                 } else if (status === 'PEAK') {
-                  statusColor = '#f87171'; statusText = '尖峰負載'; Icon = Zap;
+                  statusColor = '#f87171'; statusText = t('map.microgrid.statusPeak');
                 }
 
                 return (
                   <div>
                     <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px'}}>
                       <span style={{fontSize: '0.8rem', color: '#94a3b8', fontWeight: 'bold', display: 'flex', gap: '6px', alignItems: 'center'}}>
-                        <Zap size={14} /> 微電網狀態
+                        <Zap size={14} /> {t('map.microgrid.title')}
                       </span>
                       <span style={{fontSize: '0.7rem', color: statusColor, border: `1px solid ${statusColor}`, padding: '2px 6px', borderRadius: '4px'}}>
                         {statusText}
@@ -1509,11 +1511,11 @@ const KinmenMapSim = ({ onSimulationUpdate, isRunningExternal }) => {
 
                     <div style={{display: 'flex', justifyContent: 'space-between', marginBottom: '8px'}}>
                        <div style={{textAlign: 'center', flex: 1, borderRight: '1px solid #334155'}}>
-                          <div style={{fontSize: '0.7rem', color: '#64748b'}}>即時電價</div>
+                          <div style={{fontSize: '0.7rem', color: '#64748b'}}>{t('map.microgrid.electricityPrice')}</div>
                           <div style={{fontSize: '1.2rem', fontWeight: 'bold', color: '#fbbf24'}}>${price.toFixed(1)}</div>
                        </div>
                        <div style={{textAlign: 'center', flex: 1}}>
-                          <div style={{fontSize: '0.7rem', color: '#64748b'}}>電網負載</div>
+                          <div style={{fontSize: '0.7rem', color: '#64748b'}}>{t('map.microgrid.gridLoad')}</div>
                           <div style={{fontSize: '1.2rem', fontWeight: 'bold', color: statusColor}}>{Math.round(load)}%</div>
                        </div>
                     </div>
@@ -1522,7 +1524,7 @@ const KinmenMapSim = ({ onSimulationUpdate, isRunningExternal }) => {
                     {solar > 5 && (
                       <div style={{marginTop: '8px', backgroundColor: 'rgba(250, 204, 21, 0.1)', padding: '6px', borderRadius: '6px', display: 'flex', justifyContent: 'center', gap: '6px', alignItems: 'center'}}>
                          <Sun size={12} color="#facc15" />
-                         <span style={{fontSize: '0.75rem', color: '#facc15'}}>PV Output: {Math.round(solar)}%</span>
+                         <span style={{fontSize: '0.75rem', color: '#facc15'}}>{t('map.microgrid.pvOutput')}: {Math.round(solar)}%</span>
                       </div>
                     )}
                   </div>
@@ -1532,7 +1534,7 @@ const KinmenMapSim = ({ onSimulationUpdate, isRunningExternal }) => {
 
           <div style={styles.card}>
              <h3 style={{fontSize: '0.9rem', color: '#94a3b8', margin: '0 0 10px 0', display: 'flex', alignItems: 'center', gap: '8px'}}>
-               <BarChart3 size={16} /> 能耗趨勢對比
+               <BarChart3 size={16} /> {t('map.energyChart.title')}
              </h3>
              <div style={styles.chartWrapper}>
                 {statsHistory.length > 0 ? (
@@ -1550,7 +1552,7 @@ const KinmenMapSim = ({ onSimulationUpdate, isRunningExternal }) => {
                         yAxisId="left"
                         stroke="#94a3b8"
                         fontSize={10}
-                        label={{ value: 'kWh', angle: -90, position: 'insideLeft', fill: '#94a3b8' }}
+                        label={{ value: t('map.energyChart.unit'), angle: -90, position: 'insideLeft', fill: '#94a3b8' }}
                         domain={[0, dataMax => Math.max(dataMax * 1.1, 0.5)]}
                       />
                       <Tooltip contentStyle={{backgroundColor: '#1e293b', borderColor: '#334155', color: '#f1f5f9'}} />
@@ -1561,7 +1563,7 @@ const KinmenMapSim = ({ onSimulationUpdate, isRunningExternal }) => {
                         yAxisId="left"
                         type="monotone"
                         dataKey="baseline"
-                        name="Baseline (無優化)"
+                        name={t('map.energyChart.baseline')}
                         stroke="#ef4444"
                         strokeWidth={2}
                         strokeDasharray="5 5"
@@ -1574,7 +1576,7 @@ const KinmenMapSim = ({ onSimulationUpdate, isRunningExternal }) => {
                         yAxisId="left"
                         type="monotone"
                         dataKey="energy"
-                        name="RL Agent (本系統)"
+                        name={t('map.energyChart.rlAgent')}
                         stroke="#10b981"
                         fill="url(#colorEnergy)"
                         strokeWidth={3}
@@ -1582,17 +1584,17 @@ const KinmenMapSim = ({ onSimulationUpdate, isRunningExternal }) => {
                       />
                     </AreaChart>
                   </ResponsiveContainer>
-                ) : (<div style={{height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#475569', fontSize: '0.8rem'}}>等待數據...</div>)}
+                ) : (<div style={{height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#475569', fontSize: '0.8rem'}}>{t('map.energyChart.waiting')}</div>)}
              </div>
           </div>
 
           <div style={styles.card}>
             <h3 style={{margin: '0', fontSize: '0.9rem', color: '#94a3b8', display: 'flex', gap: '5px', alignItems: 'center'}}>
-              <History size={16} /> 決策日誌
+              <History size={16} /> {t('map.decisionLog.title')}
             </h3>
             <div style={styles.logBox}>
               {logs.length === 0 ? (
-                <span style={{fontStyle: 'italic', opacity: 0.5}}>系統待命中...</span>
+                <span style={{fontStyle: 'italic', opacity: 0.5}}>{t('map.decisionLog.waiting')}</span>
               ) : (
                 logs.map((log) => {
                   // 根據類別決定顏色和背景
@@ -1603,15 +1605,15 @@ const KinmenMapSim = ({ onSimulationUpdate, isRunningExternal }) => {
                   if (log.category === 'SYSTEM') {
                     categoryColor = '#38bdf8'; // 青色
                     categoryBg = 'rgba(56, 189, 248, 0.15)';
-                    categoryLabel = 'SYS';
+                    categoryLabel = t('map.decisionLog.categorySystem');
                   } else if (log.category === 'AI') {
                     categoryColor = '#a78bfa'; // 紫色
                     categoryBg = 'rgba(167, 139, 250, 0.15)';
-                    categoryLabel = 'AI';
+                    categoryLabel = t('map.decisionLog.categoryAI');
                   } else if (log.category === 'WARN') {
                     categoryColor = '#fb923c'; // 橘色
                     categoryBg = 'rgba(251, 146, 60, 0.15)';
-                    categoryLabel = 'WARN';
+                    categoryLabel = t('map.decisionLog.categoryWarn');
                   }
 
                   return (
